@@ -1,0 +1,26 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<!-- No <head> or <body> inside blocks, let base.html handle that -->
+
+<!-- Top Image -->
+<div class="top-image-container">
+    <img src="{% static 'core/images/fondo.jpg' %}" alt="">
+</div>
+
+<!-- Title Below the Image -->
+<div class="contenedor-titulo-inicio">
+  <h1>KYVM Ingenieria Limitada</h1>
+</div>
+
+<!-- Main Content -->
+<div class="container mt-5">
+  <h2>Somos una empresa formada por dos ingenieros civiles informáticos con más de 25 años
+    de experiencia en creación, desarrollo, implementación y gestión de soluciones
+    informáticas, tanto en el sector público como privado.</h2>
+</div>
+
+
+
+{% endblock content %}

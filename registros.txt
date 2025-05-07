@@ -1,0 +1,73 @@
+Necesito un "modulo" el cual sea un "fin de turno" , que quiere decir 
+
+- NECESITO QUE SEA una "plantilla" de correo 
+
+la cual generara el usuario administrador , el tendra un template donde el podra definir esta plantilla 
+
+- al momento de generarse esta debe de guardad , que usuario la realizo , que eventos hubieron , cuantos eventos hubieron, la zona de trabajo donde ocurrio
+
+- solo el usuario operador podra generar los fin de turno 
+
+- El usuario administrador tendra una lista de todos los fin de turno de zona , como registros 
+
+- tanto el usuario administrador como operador podran acceder a visualizar los fin de turno , al igual que revisar los registros previos 
+
+- En este fin de turno tendremos un modulo o tabla que estara anidad a la zona de trabajo o workzone , esta siendo 
+
+FINDETURNO
+ID
+NOMBRE USUARIO
+FECHA REALIZADA
+EVENTOS (EN CANTIDAD)
+
+QUIERO QUE EL USUARIO ADMINISTRADOR PUEDA CREAR TIPOS DE EVENTOS QUE SERAN UTILIZADOS 
+POR EJEMPLO 
+
+EVENTO 
+        ETIQUETADORA 
+        PROBLEMA 
+        SOLUCION 
+        ANEXO
+        FECHA
+        UBICACION
+
+
+La plantilla se vera algo como esto 
+
+
+     Buenas tardes estimados, hago el fin de turno con los siguientes eventos 
+
+
+     10:40 AM - Llamada desde policlinico - ETIQUETADORA 
+     - Anexo 1222
+     - problema : "estaba averiada"
+     - solucion : "se arregla y queda operativa"
+
+
+
+     Saludos cordiales  
+
+    Hospital                   Operador (tipo de usuario)
+    direccion                  Juan 
+    numero                     9999 99999 
+
+
+
+    cabe mencionar que quiero que el usuario operador pueda ver esto en un formato de correo para despues el poder copiar y pegar en su respectivo correo 
+
+    CONTEXO
+    Los eventos pueden ser ya de problemas de etiqutadoras a equipos y asi
+    en la template del usuario operador a crear , debe poder incluir la opcion "SIN CAMBIOS" la cual sera un boton que generara una plantilla de correo sin cambios respecto a la previa registrada (por eso es importante la fecha)
+    y cuando genere esta nueva plantilla "sin cambios" , lo unico que debe cambiar , si es que no es el mismo es , fecha y nombre / tipo de usuario , ya que se asume que la zona de trabajo sera la misma 
+
+    
+                        
+
+
+
+
+       
+
+
+
+

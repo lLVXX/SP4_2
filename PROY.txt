@@ -1,0 +1,518 @@
+# core/views.py
+
+# core/views.py
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.utils.dateparse import parse_date
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth import update_session_auth_hash
+
+Usuario = get_user_model()
+
+def redirect_user_based_on_role(user):
+    if user.user_type == 'operador':
+        if user.workzone.lower() == 'hospital':
+            return redirect('InicioOperadorHospital')
+        elif user.workzone.lower() == 'clinica':
+            return redirect('InicioOperadorClinica')
+    elif user.user_type == 'admin':
+        if user.workzone.lower() == 'hospital':
+            return redirect('InicioAdminHospital')
+        elif user.workzone.lower() == 'clinica':
+            return redirect('InicioAdminClinica')
+    return redirect('Ingreso')
+
+def home(request):
+    if request.user.is_authenticated:
+        return redirect_user_based_on_role(request.user)
+    return render(request, 'core/home.html')
+
+def Ingreso(request):
+    from .forms import CustomLoginForm
+    if request.method == 'POST':
+        form = CustomLoginForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            return redirect_user_based_on_role(user)
+        else:
+            messages.error(request, 'Usuario o contraseña incorrectos.')
+    else:
+        form = CustomLoginForm()
+    return render(request, 'core/Ingreso.html', {'form': form})
+
+@login_required
+def logout_view(request):
+    logout(request)
+    return redirect('Ingreso')
+
+@login_required
+def InicioOperadorHospital(request):
+    return render(request, 'Operador/InicioOperadorHospital.html')
+
+@login_required
+def InicioOperadorClinica(request):
+    return render(request, 'Operador/InicioOperadorClinica.html')
+
+@login_required
+def InicioAdminHospital(request):
+    return render(request, 'Admin/InicioAdminHospital.html')
+
+@login_required
+def InicioAdminClinica(request):
+    return render(request, 'Admin/InicioAdminClinica.html')
+
+@login_required
+def HospitalGestionUsuarios(request):
+    if not request.user.user_type == 'admin' or request.user.workzone.lower() != 'hospital':
+        return redirect('Ingreso')
+
+    if request.method == 'POST':
+        if 'delete_user' in request.POST:
+            user_id = request.POST.get('delete_user')
+            user = get_object_or_404(Usuario, id=user_id, user_type='operador', workzone__iexact='hospital')
+            user.delete()
+            messages.success(request, f"Operador '{user.username}' eliminado correctamente.")
+            return redirect('HospitalGestionUsuarios')
+
+        username = request.POST.get('username')
+        first_name = request.POST.get('first_name')
+        last_name = request.POST.get('last_name')
+        date_of_entry = request.POST.get('date_of_entry')
+        password = '12345678'  # Hardcoded default password
+
+        if not username:
+            messages.error(request, "El nombre de usuario es requerido.")
+        elif Usuario.objects.filter(username=username).exists():
+            messages.error(request, "El nombre de usuario ya existe.")
+        else:
+            user = Usuario.objects.create_user(
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                password=password,
+                user_type='operador',
+                workzone='hospital'
+            )
+            user.date_of_entry = parse_date(date_of_entry) if date_of_entry else None
+            user.save()
+            messages.success(request, f"Operador '{username}' creado exitosamente con contraseña por defecto.")
+            return redirect('HospitalGestionUsuarios')
+
+    operadores = Usuario.objects.filter(user_type='operador', workzone__iexact='hospital')
+    return render(request, 'Admin/HospitalGestionUsuarios.html', {
+        'operadores': operadores
+    })
+
+@login_required
+def cambiar_contrasena(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)
+            messages.success(request, 'Contraseña actualizada correctamente!')
+            return redirect('InicioOperadorHospital')
+        else:
+            messages.error(request, 'Por favor corrija los errores.')
+    else:
+        form = PasswordChangeForm(request.user)
+    return render(request, 'Operador/cambiar_contrasena.html', {'form': form})
+
+
+# core/forms.py
+
+
+# core/forms.py
+
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth import get_user_model
+
+Usuario = get_user_model()
+
+class CustomLoginForm(AuthenticationForm):
+    username = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre de usuario'})
+    )
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Contraseña'})
+    )
+
+class OperadorCreationForm(UserCreationForm):
+    class Meta:
+        model = Usuario
+        fields = ['username', 'first_name', 'last_name', 'email', 'password1', 'password2']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.user_type = 'operador'
+        user.workzone = 'hospital'
+        if commit:
+            user.save()
+        return user
+
+
+# core/models.py
+
+
+
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class CustomUser(AbstractUser):
+    USER_TYPE_CHOICES = (
+        ('admin', 'Admin'),
+        ('operador', 'Operador'),
+    )
+
+    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES)
+    workzone = models.CharField(max_length=100)
+    date_of_entry = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return self.username
+
+
+
+# core/admin.py
+
+
+########################################################
+########################################################
+
+Templates 
+
+#core/templates/core/base.html
+
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ nombre_tienda }}</title>
+
+    <link rel="shortcut icon" href="{% static 'core/images/favicon.png' %}" type="image/x-icon" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="{% static 'core/css/style.css' %}" rel="stylesheet">
+
+    {% block stylesheet %}
+    {% endblock stylesheet %}
+</head>
+
+<body>
+
+    {% block navbar %}
+    <nav class="navbar navbar-expand-lg bg-gradient-midnight">
+        <div class="container-fluid">
+            <a class="navbar-brand text-white" href="{% url 'home' %}">KYVM</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+    
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+    
+                    <li class="nav-item">
+                        <a class="nav-link text-white" href="{% url 'home' %}">Inicio</a>
+                    </li>
+    
+                    {% if user.is_authenticated %}
+                        {% if user.user_type == 'admin' %}
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="{% url 'HospitalGestionUsuarios' %}">HospitalGestionUsuarios</a>
+                        </li>
+                        {% elif user.user_type == 'operador' %}
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="{% url 'cambiar_contrasena' %}">Cambiar Contraseña</a>
+                        </li>
+                        {% endif %}
+    
+                        <!-- LOGOUT BUTTON -->
+                        <li class="nav-item ms-3">
+                            <form method="POST" action="{% url 'logout' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger">Cerrar sesión</button>
+                            </form>
+                        </li>
+    
+                    {% else %}
+                        <!-- LOGIN ICON -->
+                        <li class="nav-item ms-3">
+                            <a class="nav-link" href="{% url 'Ingreso' %}">
+                                <img src="{% static 'core/icons/person-circle.svg' %}" alt="Perfil" class="icon" style="width: 32px; height: 32px;">
+                            </a>
+                        </li>
+                    {% endif %}
+    
+                </ul>
+            </div>
+        </div>
+    </nav>
+    {% endblock navbar %}
+
+    {% block content %}
+    {% endblock content %}
+
+    <!-- Bootstrap Bundle JS with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    {% block script %}
+    {% endblock script %}
+    
+</body>
+</html>
+
+
+#core/templates/core/home.html
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<!-- No <head> or <body> inside blocks, let base.html handle that -->
+
+<!-- Top Image -->
+<div class="top-image-container">
+    <img src="{% static 'core/images/fondo.jpg' %}" alt="">
+</div>
+
+<!-- Title Below the Image -->
+<div class="contenedor-titulo-inicio">
+  <h1>KYVM Ingenieria Limitada</h1>
+</div>
+
+<!-- Main Content -->
+<div class="container mt-5">
+  <h2>Somos una empresa formada por dos ingenieros civiles informáticos con más de 25 años
+    de experiencia en creación, desarrollo, implementación y gestión de soluciones
+    informáticas, tanto en el sector público como privado.</h2>
+</div>
+
+
+
+{% endblock content %}
+
+
+#core/templates/core/Ingreso.html
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-6 p-0">
+      <img src="{% static 'core/images/fondo.jpg' %}" alt="Left Side Image" class="img-half">
+    </div>
+    
+    <div class="col-md-6 d-flex align-items-center justify-content-center">
+      <div class="text-center">
+        <h2>Ingreso</h2>
+
+        <form method="POST">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+              {{ form.username.label_tag }}
+              {{ form.username }}
+              {{ form.username.errors }}
+          </div>
+          <div class="mb-3">
+              {{ form.password.label_tag }}
+              {{ form.password }}
+              {{ form.password.errors }}
+          </div>
+          <button type="submit" class="btn btn-primary">Ingresar</button>
+      </form>
+      
+      {% if messages %}
+          {% for message in messages %}
+              <div class="alert alert-warning">{{ message }}</div>
+          {% endfor %}
+      {% endif %}
+
+      
+       
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+#core/templates/core/Admin/AgregarUsuario.html
+
+{% extends 'core/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+  <h2>Añadir nuevo operador</h2>
+  
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Crear Usuario</button>
+</form>
+</div>
+{% endblock %}
+
+
+
+#core/templates/core/Admin/HospitalGestionUsuario.html
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Gestionar Operadores - Hospital</h2>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}" role="alert">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-header">Crear nuevo operador</div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="id_username" class="form-label">Nombre de usuario</label>
+                    <input type="text" name="username" class="form-control" id="id_username" required>
+                </div>
+                <div class="mb-3">
+                    <label for="id_first_name" class="form-label">Nombre</label>
+                    <input type="text" name="first_name" class="form-control" id="id_first_name">
+                </div>
+                <div class="mb-3">
+                    <label for="id_last_name" class="form-label">Apellido</label>
+                    <input type="text" name="last_name" class="form-control" id="id_last_name">
+                </div>
+                <div class="mb-3">
+                    <label for="id_date_of_entry" class="form-label">Fecha de ingreso</label>
+                    <input type="date" name="date_of_entry" class="form-control" id="id_date_of_entry">
+                </div>
+                <div class="alert alert-info">
+                    <small>La contraseña por defecto será "12345678"</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Crear operador</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Lista de operadores (Hospital)</div>
+        <ul class="list-group list-group-flush">
+            {% for op in operadores %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ op.username }}</strong> - {{ op.first_name }} {{ op.last_name }}
+                        {% if op.date_of_entry %} <small class="text-muted">(Ingreso: {{ op.date_of_entry }})</small>{% endif %}
+                    </div>
+                    <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="delete_user" value="{{ op.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+                    </form>
+                </li>
+            {% empty %}
+                <li class="list-group-item">No hay operadores registrados para el hospital.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+#core/templates/core/Admin/InicioAdminHospital.html
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<div>
+    <h1>Inicio Admin</h1>
+</div>
+{% endblock %}
+
+
+#core/templates/core/Operador/cambiar_contrasena.html
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Cambiar Contraseña</h2>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}" role="alert">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                    <div class="mb-3">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.errors %}
+                            <div class="text-danger">
+                                {% for error in field.errors %}
+                                    <small>{{ error }}</small>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary">Cambiar Contraseña</button>
+                <a href="{% url 'InicioOperadorHospital' %}" class="btn btn-secondary">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+#core/templates/core/Operador/InicioOperadorHospital.html
+
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+
+<div>
+    <h1>Inicio Operador HHHHHHHHHHHH</h1>
+</div>
+{% endblock %}
+
+
+
+
+
+
+

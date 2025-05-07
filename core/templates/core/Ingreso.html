@@ -1,0 +1,43 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-6 p-0">
+      <img src="{% static 'core/images/fondo.jpg' %}" alt="Left Side Image" class="img-half">
+    </div>
+    
+    <div class="col-md-6 d-flex align-items-center justify-content-center">
+      <div class="text-center">
+        <h2>Ingreso</h2>
+
+        <form method="POST">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+              {{ form.username.label_tag }}
+              {{ form.username }}
+              {{ form.username.errors }}
+          </div>
+          <div class="mb-3">
+              {{ form.password.label_tag }}
+              {{ form.password }}
+              {{ form.password.errors }}
+          </div>
+          <button type="submit" class="btn btn-primary">Ingresar</button>
+      </form>
+      
+      {% if messages %}
+          {% for message in messages %}
+              <div class="alert alert-warning">{{ message }}</div>
+          {% endfor %}
+      {% endif %}
+
+      
+       
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

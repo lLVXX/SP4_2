@@ -1,0 +1,37 @@
+- AdminGL 
+- Usuario encargado de crear Workzones o zonas de trabajo , las cuales seran usadas para poder segmentar el sistema
+
+- El usuario AdminGL tendra su propia vista para crear las Workzones o zonas de trabajo
+- El usuario AdminGL tendra su propia vista para crear a usuarios administradores, durante su creacion les asignra una workzone
+
+- Al momento de crear usuarios administradores , quiero que use el mismo sistema de los usuarios operadores, es decir :
+    - clave por defecto "12345678"
+    - Los usuarios administradores podran cambiar su contraseña posterior a ser creados , al oigual que los usuarios operadores 
+
+- Al momento de crear las zonas de trabajo o workzone, deberan tener la siguiente estructura : 
+   
+   ID
+   NOMBRE
+   NUMERO
+   CORREO
+   DIRECCION
+   EVENTOS 
+
+- en Eventos es importante recalcar que los usuarios tanto AdminGL como administradores , podran ir agregandole valores , con sus respectivos templates un ejemplo seria 
+
+
+ID 001
+NOMBRE HOSPITAL
+NUMERO 9999 9999
+CORREO HOSPITAL@HOSPITAL.COM  
+DIRECCION LUGAR LUGAR
+EVENTOS 
+
+Y LA TABLA DE EVENTOS SERA 
+
+ID 
+TIPO
+NOMBRE
+PROBLEMA
+SOLUCION 
+

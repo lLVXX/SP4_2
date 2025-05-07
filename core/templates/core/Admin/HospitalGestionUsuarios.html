@@ -1,0 +1,66 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Gestionar Operadores - Hospital</h2>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}" role="alert">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-header">Crear nuevo operador</div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="id_username" class="form-label">Nombre de usuario</label>
+                    <input type="text" name="username" class="form-control" id="id_username" required>
+                </div>
+                <div class="mb-3">
+                    <label for="id_first_name" class="form-label">Nombre</label>
+                    <input type="text" name="first_name" class="form-control" id="id_first_name">
+                </div>
+                <div class="mb-3">
+                    <label for="id_last_name" class="form-label">Apellido</label>
+                    <input type="text" name="last_name" class="form-control" id="id_last_name">
+                </div>
+                <div class="mb-3">
+                    <label for="id_date_of_entry" class="form-label">Fecha de ingreso</label>
+                    <input type="date" name="date_of_entry" class="form-control" id="id_date_of_entry">
+                </div>
+                <div class="alert alert-info">
+                    <small>La contraseña por defecto será "12345678"</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Crear operador</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Lista de operadores (Hospital)</div>
+        <ul class="list-group list-group-flush">
+            {% for op in operadores %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ op.username }}</strong> - {{ op.first_name }} {{ op.last_name }}
+                        {% if op.date_of_entry %} <small class="text-muted">(Ingreso: {{ op.date_of_entry }})</small>{% endif %}
+                    </div>
+                    <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="delete_user" value="{{ op.id }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+                    </form>
+                </li>
+            {% empty %}
+                <li class="list-group-item">No hay operadores registrados para el hospital.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
