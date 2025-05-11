@@ -1,4 +1,83 @@
+# core/urls.py
+
+# core/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Public views
+    path('', views.home, name='home'),
+    path('Ingreso/', views.Ingreso, name='Ingreso'),
+    path('logout/', views.logout_view, name='logout'),
+
+    # Operador views
+    path('InicioOperadorHospital/', views.InicioOperadorHospital, name='InicioOperadorHospital'),
+    path('InicioOperadorClinica/', views.InicioOperadorClinica, name='InicioOperadorClinica'),
+    path('cambiar_contrasena/', views.cambiar_contrasena, name='cambiar_contrasena'),
+    path('OperadorFinTurno/', views.OperadorFinTurno, name='OperadorFinTurno'),
+
+    # Admin Zona views
+    path('InicioAdminHospital/', views.InicioAdminHospital, name='InicioAdminHospital'),
+    path('InicioAdminClinica/', views.InicioAdminClinica, name='InicioAdminClinica'),
+    path('HospitalGestionUsuarios/', views.HospitalGestionUsuarios, name='HospitalGestionUsuarios'),
+
+    # Admin Global views
+    path('InicioAdminGl/', views.InicioAdminGl, name='InicioAdminGl'),
+    path('admin_global/workzones/crear/', views.crear_workzone, name='crear_workzone'),
+    path('admin_global/workzones/listar/', views.listar_workzones, name='listar_workzones'),
+    path('admin_global/admins/crear/', views.crear_admin_zone, name='crear_admin_zone'),
+]
+
+
+
+
+# core/models.py
+
+
+
+# core/models.py
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+
+class WorkZone(models.Model):
+    nombre = models.CharField(max_length=100)
+    numero = models.CharField(max_length=50)
+    correo = models.EmailField()
+    direccion = models.TextField()
+
+    def __str__(self):
+        return self.nombre
+
+class Evento(models.Model):
+    workzone = models.ForeignKey(WorkZone, on_delete=models.CASCADE, related_name='eventos')
+    tipo = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100)
+    problema = models.TextField()
+    solucion = models.TextField()
+    fecha = models.DateTimeField(auto_now_add=True) 
+
+    def __str__(self):
+        return f"{self.tipo} - {self.nombre}"
+    
+
+class CustomUser(AbstractUser):
+    USER_TYPE_CHOICES = (
+        ('admin_global', 'Administrador Global'),
+        ('admin_zone', 'Administrador Zona'),
+        ('operator', 'Operador'),
+    )
+    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='operator')
+    workzone = models.ForeignKey('WorkZone', null=True, blank=True, on_delete=models.SET_NULL)
+    date_of_entry = models.DateField(null=True, blank=True)
+
+
+
+
+
+
+
 # core/views.py
+
 
 # core/views.py
 
@@ -42,6 +121,10 @@ def redirect_user_based_on_role(user):
 
 # ============================ Autenticación ============================
 
+
+
+
+
 def home(request):
     if request.user.is_authenticated:
         return redirect_user_based_on_role(request.user)
@@ -72,6 +155,13 @@ def InicioOperadorHospital(request):
     if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
         return redirect('Ingreso')
     return render(request, 'core/Operador/InicioOperadorHospital.html')
+
+
+@login_required
+def OperadorFinTurno(request):
+    if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('OperadorFinTurno')
+    return render(request, 'core/Operador/OperadorFinTurno.html')
 
 @login_required
 def InicioOperadorClinica(request):
@@ -188,77 +278,15 @@ def listar_workzones(request):
     return render(request, 'core/AdminGL/listar_workzones.html', {'zonas': zonas})
 
 
-# core/urls.py
-
-# core/urls.py
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    # Public views
-    path('', views.home, name='home'),
-    path('Ingreso/', views.Ingreso, name='Ingreso'),
-    path('logout/', views.logout_view, name='logout'),
-
-    # Operador views
-    path('InicioOperadorHospital/', views.InicioOperadorHospital, name='InicioOperadorHospital'),
-    path('InicioOperadorClinica/', views.InicioOperadorClinica, name='InicioOperadorClinica'),
-    path('cambiar_contrasena/', views.cambiar_contrasena, name='cambiar_contrasena'),
-
-    # Admin Zona views
-    path('InicioAdminHospital/', views.InicioAdminHospital, name='InicioAdminHospital'),
-    path('InicioAdminClinica/', views.InicioAdminClinica, name='InicioAdminClinica'),
-    path('HospitalGestionUsuarios/', views.HospitalGestionUsuarios, name='HospitalGestionUsuarios'),
-
-    # Admin Global views
-    path('InicioAdminGl/', views.InicioAdminGl, name='InicioAdminGl'),
-    path('admin_global/workzones/crear/', views.crear_workzone, name='crear_workzone'),
-    path('admin_global/workzones/listar/', views.listar_workzones, name='listar_workzones'),
-    path('admin_global/admins/crear/', views.crear_admin_zone, name='crear_admin_zone'),
-]
 
 
-# core/models.py
 
-
-# core/models.py
-from django.db import models
-from django.contrib.auth.models import AbstractUser
-
-class WorkZone(models.Model):
-    nombre = models.CharField(max_length=100)
-    numero = models.CharField(max_length=50)
-    correo = models.EmailField()
-    direccion = models.TextField()
-
-    def __str__(self):
-        return self.nombre
-
-class Evento(models.Model):
-    workzone = models.ForeignKey(WorkZone, on_delete=models.CASCADE, related_name='eventos')
-    tipo = models.CharField(max_length=100)
-    nombre = models.CharField(max_length=100)
-    problema = models.TextField()
-    solucion = models.TextField()
-    fecha = models.DateTimeField(auto_now_add=True) 
-
-    def __str__(self):
-        return f"{self.tipo} - {self.nombre}"
-    
-
-class CustomUser(AbstractUser):
-    USER_TYPE_CHOICES = (
-        ('admin_global', 'Administrador Global'),
-        ('admin_zone', 'Administrador Zona'),
-        ('operator', 'Operador'),
-    )
-    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='operator')
-    workzone = models.ForeignKey('WorkZone', null=True, blank=True, on_delete=models.SET_NULL)
-    date_of_entry = models.DateField(null=True, blank=True)
 
 
 
 # core/admin.py
+
+
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
@@ -286,10 +314,255 @@ class EventoAdmin(admin.ModelAdmin):
 
 
 
+# core/templates/core/base.html
 
-### Templates de Administrador_zona
+
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ nombre_tienda|default:"SP_VI Sistema" }}</title>
+
+    <link rel="shortcut icon" href="{% static 'core/images/favicon.png' %}" type="image/x-icon" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="{% static 'core/css/style.css' %}" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    
+    {% block stylesheet %}{% endblock %}
+</head>
+
+<body>
+
+{% block navbar %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-gradient-midnight shadow">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{% url 'home' %}">
+            <img src="{% static 'core/images/logo.png' %}" alt="Logo" height="40" class="d-inline-block align-top">
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarMain">
+            <ul class="navbar-nav me-auto">
+
+                <!-- INICIO: dinámica según usuario -->
+                {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        {% if user.user_type == 'admin_global' %}
+                            <a class="nav-link" href="{% url 'InicioAdminGl' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'admin_zone' and user.workzone.nombre|lower == 'hospital' %}
+                            <a class="nav-link" href="{% url 'InicioAdminHospital' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'admin_zone' and user.workzone.nombre|lower == 'clinica' %}
+                            <a class="nav-link" href="{% url 'InicioAdminClinica' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'hospital' %}
+                            <a class="nav-link" href="{% url 'InicioOperadorHospital' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+
+                        {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'clinica' %}
+                            <a class="nav-link" href="{% url 'InicioOperadorClinica' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% else %}
+                            <a class="nav-link" href="{% url 'home' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% endif %}
+                    </li>
+
+                    <!-- Menú por rol -->
+                    {% if user.user_type == 'admin_global' %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-globe"></i> Admin Global
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'InicioAdminGl' %}">Dashboard</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'crear_workzone' %}">Crear Zona</a></li>
+                                <li><a class="dropdown-item" href="{% url 'crear_admin_zone' %}">Crear Administrador</a></li>
+                                <li><a class="dropdown-item" href="{% url 'listar_workzones' %}">Ver Zonas</a></li>
+                            </ul>
+                        </li>
+                    {% elif user.user_type == 'admin_zone' %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'HospitalGestionUsuarios' %}">
+                                <i class="bi bi-people-fill"></i> Gestionar Operadores
+                            </a>
+                        </li>
+                    {% elif user.user_type == 'operador' %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'cambiar_contrasena' %}">
+                                <i class="bi bi-key"></i> Cambiar Contraseña
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'OperadorFinTurno' %}">
+                                <i class="#"></i> Fin de Turno
+                            </a>
+                        </li>
+
+                    {% endif %}
+                {% else %}
+                    <!-- Usuario no autenticado -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'home' %}">
+                            <i class="bi bi-house-door-fill"></i> Inicio
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+
+            <!-- Usuario y logout -->
+            <ul class="navbar-nav ms-auto">
+                {% if user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><span class="dropdown-item-text">
+                                <small class="text-muted">Rol: {{ user.get_user_type_display }}</small>
+                            </span></li>
+                            {% if user.workzone %}
+                                <li><span class="dropdown-item-text">
+                                    <small class="text-muted">Zona: {{ user.workzone.nombre }}</small>
+                                </span></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'cambiar_contrasena' %}">
+                                <i class="bi bi-key-fill"></i> Cambiar contraseña
+                            </a></li>
+                            <li>
+                                <form method="POST" action="{% url 'logout' %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item">
+                                        <i class="bi bi-box-arrow-right"></i> Cerrar sesión
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'Ingreso' %}">
+                            <i class="bi bi-box-arrow-in-right"></i> Ingresar
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>
+{% endblock navbar %}
+
+{% block content %}
+{% endblock content %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% block script %}{% endblock %}
+</body>
+</html>
+
+
+
+# core/templates/core/home.html
+
+
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<!-- No <head> or <body> inside blocks, let base.html handle that -->
+
+<!-- Top Image -->
+<div class="top-image-container">
+    <img src="{% static 'core/images/fondo.jpg' %}" alt="">
+</div>
+
+<!-- Title Below the Image -->
+<div class="contenedor-titulo-inicio">
+  <h1>KYVM Ingenieria Limitada</h1>
+</div>
+
+<!-- Main Content -->
+<div class="container mt-5">
+  <h2>Somos una empresa formada por dos ingenieros civiles informáticos con más de 25 años
+    de experiencia en creación, desarrollo, implementación y gestión de soluciones
+    informáticas, tanto en el sector público como privado.</h2>
+</div>
+
+
+
+{% endblock content %}
+
+
+
+# core/templates/core/Ingreso.html
+
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-6 p-0">
+      <img src="{% static 'core/images/fondo.jpg' %}" alt="Left Side Image" class="img-half">
+    </div>
+    
+    <div class="col-md-6 d-flex align-items-center justify-content-center">
+      <div class="text-center">
+        <h2>Ingreso</h2>
+
+        <form method="POST">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+              {{ form.username.label_tag }}
+              {{ form.username }}
+              {{ form.username.errors }}
+          </div>
+          <div class="mb-3">
+              {{ form.password.label_tag }}
+              {{ form.password }}
+              {{ form.password.errors }}
+          </div>
+          <button type="submit" class="btn btn-primary">Ingresar</button>
+      </form>
+      
+      {% if messages %}
+          {% for message in messages %}
+              <div class="alert alert-warning">{{ message }}</div>
+          {% endfor %}
+      {% endif %}
+
+      
+       
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
 
 # core/templates/core/Admin/AgregarUsuario.html
+
 
 {% extends 'core/base.html' %}
 
@@ -312,7 +585,9 @@ class EventoAdmin(admin.ModelAdmin):
 {% endblock %}
 
 
+
 # core/templates/core/Admin/HospitalGestionUsuarios.html
+
 
 {% extends 'core/base.html' %}
 {% load static %}
@@ -382,7 +657,9 @@ class EventoAdmin(admin.ModelAdmin):
 {% endblock %}
 
 
+
 # core/templates/core/Admin/InicioAdminHospital.html
+
 
 
 {% extends 'core/base.html' %}
@@ -396,9 +673,9 @@ class EventoAdmin(admin.ModelAdmin):
 {% endblock %}
 
 
-### Templates de Administrador_Global
+# core/templates/core/AdminGL/crear_admin_zone.html
 
-# core/templates/core/AdminGL/crear_admin_zone
+
 
 {% extends 'core/base.html' %}
 
@@ -414,7 +691,10 @@ class EventoAdmin(admin.ModelAdmin):
 {% endblock %}
 
 
-# core/templates/core/AdminGL/crear_workzone
+
+# core/templates/core/AdminGL/crear_workzone.html
+
+
 
 {% extends 'core/base.html' %}
 
@@ -430,7 +710,10 @@ class EventoAdmin(admin.ModelAdmin):
 {% endblock %}
 
 
-# core/templates/core/AdminGL/InicioAdminGl
+
+# core/templates/core/AdminGL/InicioAdminGl.html
+
+
 
 {% extends 'core/base.html' %}
 {% block content %}
@@ -445,9 +728,9 @@ class EventoAdmin(admin.ModelAdmin):
 {% endblock %}
 
 
-### Templates de Operador
 
-# core/templates/core/Operador/cambiar_contrasena
+# core/templates/core/Operador/cambiar_contrasena.html
+
 
 {% extends 'core/base.html' %}
 {% load static %}
@@ -488,7 +771,11 @@ class EventoAdmin(admin.ModelAdmin):
     </div>
 </div>
 {% endblock %}
-# core/templates/core/Operador/InicioOperadorHospital
+
+
+
+# core/templates/core/Operador/InicioOperadorHospital.html
+
 
 {% extends 'core/base.html' %}
 {% load static %}
@@ -500,254 +787,220 @@ class EventoAdmin(admin.ModelAdmin):
 </div>
 {% endblock %}
 
-# core/templates/core/Operador/InicioOperadorOficina
+
+# core/templates/core/Operador/OperadorFinTurno.html
+
+
 
 {% extends 'core/base.html' %}
 {% load static %}
-
 {% block content %}
 
-<div>
-    <h1>Inicio Operador OOOOOOOOOOOOOOOOOO</h1>
-</div>
-{% endblock %}
+<div class="container mt-4">
 
+  <!-- 🔷 TÍTULO PRINCIPAL -->
+  <div class="container_FinTurno_Titulo">
+    <h1>Eventos</h1>
+  </div>
 
-
-### Templates de usuario no logeado 
-
-# core/templates/core/base.html
-
-{% load static %}
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ nombre_tienda|default:"SP_VI Sistema" }}</title>
-
-    <link rel="shortcut icon" href="{% static 'core/images/favicon.png' %}" type="image/x-icon" />
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    <link href="{% static 'core/css/style.css' %}" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
-    
-    {% block stylesheet %}{% endblock %}
-</head>
-
-<body>
-
-{% block navbar %}
-<nav class="navbar navbar-expand-lg navbar-dark bg-gradient-midnight shadow">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="{% url 'home' %}">
-            <img src="{% static 'core/images/logo.png' %}" alt="Logo" height="40" class="d-inline-block align-top">
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
-            <span class="navbar-toggler-icon"></span>
+  <!-- 🔷 SECCIÓN DE EVENTOS - ACORDEÓN -->
+  <div class="accordion" id="accordionEventos">
+    <div class="accordion-item">
+      <h2 class="accordion-header" id="headingEventos">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEventos" aria-expanded="false" aria-controls="collapseEventos">
+          <i class="bi bi-chevron-down me-2"></i> Gestión de eventos
         </button>
+      </h2>
+      <div id="collapseEventos" class="accordion-collapse collapse" aria-labelledby="headingEventos" data-bs-parent="#accordionEventos">
+        <div class="accordion-body">
 
-        <div class="collapse navbar-collapse" id="navbarMain">
-            <ul class="navbar-nav me-auto">
+          <!-- 🔹 FORMULARIO AGREGAR EVENTO -->
+          <div class="card-body">
+            <form id="eventoForm" class="row g-3 justify-content-center text-center">
+              <div class="col-md-4">
+                <label for="tipoEvento" class="form-label">Tipo de Evento</label>
+                <select class="form-select" id="tipoEvento" required>
+                  <option value="" selected disabled>Seleccione un Evento...</option>
+                  <option value="IMPRESORAS">IMPRESORAS</option>
+                  <option value="LLAMADA">LLAMADA</option>
+                  <option value="ETIQUETADORA">ETIQUETADORA</option>
+                  <option value="AVANCES">AVANCES</option>
+                  <option value="OTRO">OTRO</option>
+                </select>
+              </div>
 
-                <!-- INICIO: dinámica según usuario -->
-                {% if user.is_authenticated %}
-                    <li class="nav-item">
-                        {% if user.user_type == 'admin_global' %}
-                            <a class="nav-link" href="{% url 'InicioAdminGl' %}">
-                                <i class="bi bi-house-fill"></i> Inicio
-                            </a>
-                        {% elif user.user_type == 'admin_zone' and user.workzone.nombre|lower == 'hospital' %}
-                            <a class="nav-link" href="{% url 'InicioAdminHospital' %}">
-                                <i class="bi bi-house-fill"></i> Inicio
-                            </a>
-                        {% elif user.user_type == 'admin_zone' and user.workzone.nombre|lower == 'clinica' %}
-                            <a class="nav-link" href="{% url 'InicioAdminClinica' %}">
-                                <i class="bi bi-house-fill"></i> Inicio
-                            </a>
-                        {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'hospital' %}
-                            <a class="nav-link" href="{% url 'InicioOperadorHospital' %}">
-                                <i class="bi bi-house-fill"></i> Inicio
-                            </a>
-                        {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'clinica' %}
-                            <a class="nav-link" href="{% url 'InicioOperadorClinica' %}">
-                                <i class="bi bi-house-fill"></i> Inicio
-                            </a>
-                        {% else %}
-                            <a class="nav-link" href="{% url 'home' %}">
-                                <i class="bi bi-house-fill"></i> Inicio
-                            </a>
-                        {% endif %}
-                    </li>
+              <!-- 🔹 SELECTOR EVENTOS EXISTENTES -->
+              <div class="col-md-4">
+                <label for="eventoExistenteSelect" class="form-label">Seleccione Evento Existente</label>
+                <select class="form-select" id="eventoExistenteSelect">
+                  <option value="" selected disabled>Seleccione un evento para modificar o eliminar...</option>
+                  <option value="1">LLAMADA - Se recibió llamada de soporte</option>
+                  <option value="2">AVANCES - Actualización del sistema</option>
+                </select>
+              </div>
 
-                    <!-- Menú por rol -->
-                    {% if user.user_type == 'admin_global' %}
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-globe"></i> Admin Global
-                            </a>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="{% url 'InicioAdminGl' %}">Dashboard</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{% url 'crear_workzone' %}">Crear Zona</a></li>
-                                <li><a class="dropdown-item" href="{% url 'crear_admin_zone' %}">Crear Administrador</a></li>
-                                <li><a class="dropdown-item" href="{% url 'listar_workzones' %}">Ver Zonas</a></li>
-                            </ul>
-                        </li>
-                    {% elif user.user_type == 'admin_zone' %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'HospitalGestionUsuarios' %}">
-                                <i class="bi bi-people-fill"></i> Gestionar Operadores
-                            </a>
-                        </li>
-                    {% elif user.user_type == 'operador' %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'cambiar_contrasena' %}">
-                                <i class="bi bi-key"></i> Cambiar Contraseña
-                            </a>
-                        </li>
-                    {% endif %}
-                {% else %}
-                    <!-- Usuario no autenticado -->
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'home' %}">
-                            <i class="bi bi-house-door-fill"></i> Inicio
-                        </a>
-                    </li>
-                {% endif %}
-            </ul>
+              <!-- 🔹 HORA -->
+              <div class="col-md-4">
+                <label for="horaEvento" class="form-label">Hora del Evento</label>
+                <input type="time" class="form-control" id="horaEvento" required>
+              </div>
 
-            <!-- Usuario y logout -->
-            <ul class="navbar-nav ms-auto">
-                {% if user.is_authenticated %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ user.username }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><span class="dropdown-item-text">
-                                <small class="text-muted">Rol: {{ user.get_user_type_display }}</small>
-                            </span></li>
-                            {% if user.workzone %}
-                                <li><span class="dropdown-item-text">
-                                    <small class="text-muted">Zona: {{ user.workzone.nombre }}</small>
-                                </span></li>
-                            {% endif %}
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'cambiar_contrasena' %}">
-                                <i class="bi bi-key-fill"></i> Cambiar contraseña
-                            </a></li>
-                            <li>
-                                <form method="POST" action="{% url 'logout' %}" class="d-inline">
-                                    {% csrf_token %}
-                                    <button type="submit" class="dropdown-item">
-                                        <i class="bi bi-box-arrow-right"></i> Cerrar sesión
-                                    </button>
-                                </form>
-                            </li>
-                        </ul>
-                    </li>
-                {% else %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'Ingreso' %}">
-                            <i class="bi bi-box-arrow-in-right"></i> Ingresar
-                        </a>
-                    </li>
-                {% endif %}
-            </ul>
-        </div>
-    </div>
-</nav>
-{% endblock navbar %}
+              <!-- 🔹 DESCRIPCIÓN -->
+              <div class="col-8">
+                <label for="descripcionEvento" class="form-label">Descripción</label>
+                <textarea class="form-control" id="descripcionEvento" rows="4" placeholder="Describa el evento aquí..." required></textarea>
+              </div>
 
-{% block content %}
-{% endblock content %}
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-{% block script %}{% endblock %}
-</body>
-</html>
-
-
-# core/templates/core/home.html
-
-{% extends 'core/base.html' %}
-{% load static %}
-
-{% block content %}
-<!-- No <head> or <body> inside blocks, let base.html handle that -->
-
-<!-- Top Image -->
-<div class="top-image-container">
-    <img src="{% static 'core/images/fondo.jpg' %}" alt="">
-</div>
-
-<!-- Title Below the Image -->
-<div class="contenedor-titulo-inicio">
-  <h1>KYVM Ingenieria Limitada</h1>
-</div>
-
-<!-- Main Content -->
-<div class="container mt-5">
-  <h2>Somos una empresa formada por dos ingenieros civiles informáticos con más de 25 años
-    de experiencia en creación, desarrollo, implementación y gestión de soluciones
-    informáticas, tanto en el sector público como privado.</h2>
-</div>
-
-
-
-{% endblock content %}
-
-
-# core/templates/core/Ingreso.html
-
-{% extends 'core/base.html' %}
-{% load static %}
-
-{% block content %}
-<div class="container-fluid">
-  <div class="row">
-    <div class="col-md-6 p-0">
-      <img src="{% static 'core/images/fondo.jpg' %}" alt="Left Side Image" class="img-half">
-    </div>
-    
-    <div class="col-md-6 d-flex align-items-center justify-content-center">
-      <div class="text-center">
-        <h2>Ingreso</h2>
-
-        <form method="POST">
-          {% csrf_token %}
-          {{ form.non_field_errors }}
-          <div class="mb-3">
-              {{ form.username.label_tag }}
-              {{ form.username }}
-              {{ form.username.errors }}
+              <!-- 🔹 BOTÓN AGREGAR -->
+              <div class="col-12 d-flex justify-content-center mt-3">
+                <button type="submit" class="btn btn-success me-3">
+                  <i class="bi bi-plus-circle"></i> Agregar Evento
+                </button>
+              </div>
+            </form>
           </div>
-          <div class="mb-3">
-              {{ form.password.label_tag }}
-              {{ form.password }}
-              {{ form.password.errors }}
-          </div>
-          <button type="submit" class="btn btn-primary">Ingresar</button>
-      </form>
-      
-      {% if messages %}
-          {% for message in messages %}
-              <div class="alert alert-warning">{{ message }}</div>
-          {% endfor %}
-      {% endif %}
 
-      
-       
+          <!-- 🔹 TABLA EVENTOS REGISTRADOS -->
+          <div class="d-flex justify-content-center mt-5">
+            <div class="table-responsive" style="width: 100%; max-width: 1000px;">
+              <table class="table table-bordered black-border-table taller-cells text-center w-100">
+                <thead>
+                  <tr><th colspan="3" class="span-header">Eventos Registrados</th></tr>
+                  <tr class="column-headers">
+                    <th style="width: 25%;">Tipo de Evento</th>
+                    <th style="width: 55%;">Descripción</th>
+                    <th style="width: 20%;">Hora</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>LLAMADA</td><td>Se recibió llamada de soporte.</td><td>10:30</td></tr>
+                  <tr><td>AVANCES</td><td>Actualización del sistema completada.</td><td>12:00</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div> <!-- Fin accordion-body -->
       </div>
     </div>
   </div>
-</div>
+
+  <!-- 🔷 TÍTULO BODEGA -->
+  <div class="container_FinTurno_Titulo mt-5">
+    <h1>Estado de Bodega</h1>
+  </div>
+
+  <!-- 🔷 FORMULARIOS DE CAJAS -->
+  <div class="formulario_cajas_container">
+
+    <!-- 🔹 FORMULARIO AGREGAR CAJA -->
+    <div class="card-body">
+      <form method="post" action="#" class="row g-3 align-items-end">
+        {% csrf_token %}
+        <div class="col-md-4">
+          <label for="tipoModelo" class="form-label">Tipo de Modelo</label>
+          <select class="form-select" id="tipoModelo" name="modelo" required>
+            <option value="" selected disabled>Seleccione un modelo...</option>
+            <option value="NEGRO V1">Modelo NEGRO V1</option>
+            <option value="NEGRO V2">Modelo NEGRO V2</option>
+            <option value="COLOR V1">Modelo COLOR V1</option>
+            <option value="COLOR V2">Modelo COLOR V2</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="numeroCaja" class="form-label">Número de Caja</label>
+          <input type="text" class="form-control" id="numeroCaja" name="numero_caja" placeholder="Ej: CAJ-001" required>
+        </div>
+        <div class="col-md-4">
+          <button type="submit" class="btn btn-success w-100">
+            <i class="bi bi-plus-circle"></i> Agregar Caja
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 🔹 FORMULARIO REMOVER CAJA -->
+    <div class="card-body">
+      <form method="post" action="#" class="row g-3 align-items-end">
+        {% csrf_token %}
+        <div class="col-md-4">
+          <label for="tipoModeloRemover" class="form-label">Tipo de Modelo</label>
+          <select class="form-select" id="tipoModeloRemover" name="modelo_remover" required>
+            <option value="" selected disabled>Seleccione un modelo...</option>
+            <option value="NEGRO V1">Modelo NEGRO V1</option>
+            <option value="NEGRO V2">Modelo NEGRO V2</option>
+            <option value="COLOR V1">Modelo COLOR V1</option>
+            <option value="COLOR V2">Modelo COLOR V2</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="numeroCajaRemover" class="form-label">Número de Caja</label>
+          <input type="text" class="form-control" id="numeroCajaRemover" name="numero_caja_remover" placeholder="Ej: CAJ-001" required>
+        </div>
+        <div class="col-md-4">
+          <button type="submit" class="btn btn-danger w-100">
+            <i class="bi bi-dash-circle"></i> Remover Caja
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- 🔷 TABLAS DE BODEGA -->
+  <div class="container_plantilla_temporal_bodega">
+
+    <!-- Tabla NEGRO -->
+    <div class="table-container mt-4">
+      <div class="table-responsive">
+        <table class="table table-bordered black-border-table taller-cells">
+          <thead>
+            <tr><th colspan="3" class="span-header">Toner en Bodega / Inicio turno = 16 / Fin de turno = 16</th></tr>
+            <tr class="column-headers">
+              <th>Toner / Modelo</th>
+              <th>Cantidad</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>NEGRO V1</td><td>10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 300, 1200, 5000</td><td>13</td></tr>
+            <tr><td>NEGRO V2</td><td>10, 20, 30</td><td>3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tabla COLOR -->
+    <div class="table-container mt-4">
+      <div class="table-responsive">
+        <table class="table table-bordered black-border-table taller-cells">
+          <thead>
+            <tr><th colspan="3" class="span-header">Toner en Bodega / Inicio turno = 16 / Fin de turno = 16</th></tr>
+            <tr class="column-headers">
+              <th>Toner / Modelo</th>
+              <th>Cantidad</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>COLOR V1</td><td>10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 300, 1200, 5000</td><td>13</td></tr>
+            <tr><td>COLOR V2</td><td>10, 20, 30</td><td>3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 🔹 BOTÓN FIN DE TURNO -->
+    <div class="text-center mt-4">
+      <button type="submit" class="btn btn-success">
+        <i class="bi bi-plus-circle"></i> Generar Fin de turno
+      </button>
+    </div>
+
+  </div>
+
+</div> <!-- Fin container -->
+
 {% endblock %}
-
-
-
 
 

@@ -40,6 +40,10 @@ def redirect_user_based_on_role(user):
 
 # ============================ Autenticación ============================
 
+
+
+
+
 def home(request):
     if request.user.is_authenticated:
         return redirect_user_based_on_role(request.user)
@@ -70,6 +74,13 @@ def InicioOperadorHospital(request):
     if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
         return redirect('Ingreso')
     return render(request, 'core/Operador/InicioOperadorHospital.html')
+
+
+@login_required
+def OperadorFinTurno(request):
+    if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('OperadorFinTurno')
+    return render(request, 'core/Operador/OperadorFinTurno.html')
 
 @login_required
 def InicioOperadorClinica(request):
