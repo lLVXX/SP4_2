@@ -131,3 +131,154 @@ html, body {
       height: 40vh; /* Shrink the image height on small screens */
   }
 }
+
+
+
+
+
+ /* AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA */
+
+
+ 
+ /* Black border table styling */
+.black-border-table {
+  border: 2px solid #000 !important;
+  width: auto;
+  margin: 2rem 0;
+}
+
+/* Black borders for all cells */
+.black-border-table th,
+.black-border-table td {
+  border: 1px solid #000 !important;
+  padding: 1rem 1.5rem;
+  white-space: nowrap;
+}
+
+/* Header styling */
+.main-header {
+  background-color: #f1f1f1;
+  font-size: 1.25rem;
+  padding: 1.25rem !important;
+  border-bottom: 2px solid #000 !important;
+}
+
+/* Right-align numbers */
+.text-end {
+  text-align: right !important;
+  font-family: 'Courier New', monospace;
+}
+
+/* Column headers */
+.black-border-table thead tr:last-child th {
+  background-color: #f8f8f8;
+  border-bottom: 2px solid #000 !important;
+}
+
+/* Zebra striping */
+.black-border-table tbody tr:nth-child(odd) {
+  background-color: #f9f9f9;
+}
+
+/* Hover effect */
+.black-border-table tbody tr:hover {
+  background-color: #f1f1f1;
+}
+
+/* Estilo adicional para el formulario de remover */
+#removerCajaForm {
+  border-left: 3px solid #dc3545; /* Borde rojo izquierdo */
+  padding-left: 10px;
+}
+
+/* Asegurar alineación perfecta */
+.align-items-end {
+  align-items: flex-end;
+}
+
+/* Estilo para los botones */
+.btn {
+  transition: all 0.3s ease;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  border-color: #dc3545;
+}
+
+.btn-danger:hover {
+  background-color: #bb2d3b;
+  border-color: #b02a37;
+}
+
+.btn-success {
+  background-color: #28a745;
+  border-color: #28a745;
+}
+
+.btn-success:hover {
+  background-color: #218838;
+  border-color: #1e7e34;
+}
+
+
+
+.container_FinTurno_Titulo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 20px;
+  margin: 20px;
+}
+
+
+
+
+#descripcionEvento {
+  resize: vertical; /* permite cambiar tamaño vertical */
+  min-height: 100px;
+}
+
+
+
+
+
+
+
+/* 🔹 Contenedor del formulario */
+.formulario_cajas_container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 2rem;
+    gap: 1.5rem;
+}
+
+.formulario_cajas_container .card-body {
+    background-color: #e6f0ff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 900px;
+}
+
+/* 🔹 Contenedor de tablas */
+.container_plantilla_temporal_bodega {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 2rem;
+    padding: 1rem;
+}
+
+.container_plantilla_temporal_bodega .table-container {
+    background-color: #f0f4f8;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 900px;
+    margin-bottom: 1.5rem;
+}

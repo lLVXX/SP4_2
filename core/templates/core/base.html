@@ -51,6 +51,7 @@
                             <a class="nav-link" href="{% url 'InicioOperadorHospital' %}">
                                 <i class="bi bi-house-fill"></i> Inicio
                             </a>
+
                         {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'clinica' %}
                             <a class="nav-link" href="{% url 'InicioOperadorClinica' %}">
                                 <i class="bi bi-house-fill"></i> Inicio
@@ -88,6 +89,13 @@
                                 <i class="bi bi-key"></i> Cambiar Contraseña
                             </a>
                         </li>
+
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'OperadorFinTurno' %}">
+                                <i class="#"></i> Fin de Turno
+                            </a>
+                        </li>
+
                     {% endif %}
                 {% else %}
                     <!-- Usuario no autenticado -->

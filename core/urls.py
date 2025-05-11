@@ -12,6 +12,7 @@ urlpatterns = [
     path('InicioOperadorHospital/', views.InicioOperadorHospital, name='InicioOperadorHospital'),
     path('InicioOperadorClinica/', views.InicioOperadorClinica, name='InicioOperadorClinica'),
     path('cambiar_contrasena/', views.cambiar_contrasena, name='cambiar_contrasena'),
+    path('OperadorFinTurno/', views.OperadorFinTurno, name='OperadorFinTurno'),
 
     # Admin Zona views
     path('InicioAdminHospital/', views.InicioAdminHospital, name='InicioAdminHospital'),
