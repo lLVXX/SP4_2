@@ -1,0 +1,297 @@
+# core/views.py 
+
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def inventario(request):
+    modelos = BoxModel.objects.all().order_by('nombre')
+    tabla = []
+    for m in modelos:
+        cajas = m.cajas.filter(en_bodega=True)
+        numeros = [c.numero_unico for c in cajas]
+        tabla.append({
+            'modelo': m.nombre,
+            'numeros': ", ".join(numeros) if numeros else "-",
+            'total': cajas.count()
+        })
+
+    add_box_form = AddBoxForm()
+    delivery_form = BoxDeliveryForm()
+
+    if request.method == 'POST':
+        if 'add_box' in request.POST:
+            add_box_form = AddBoxForm(request.POST)
+            if add_box_form.is_valid():
+                new_box = add_box_form.save(commit=False)
+                if Box.objects.filter(modelo=new_box.modelo, numero_unico=new_box.numero_unico, en_bodega=True).exists():
+                    messages.error(request, "Ya existe una caja en bodega con ese modelo y número.")
+                else:
+                    new_box.en_bodega = True
+                    new_box.save()
+                    messages.success(request, "Caja agregada exitosamente.")
+                return redirect('inventario')
+
+        elif 'register_delivery' in request.POST:
+            delivery_form = BoxDeliveryForm(request.POST)
+            if delivery_form.is_valid():
+                modelo = delivery_form.cleaned_data['modelo']
+                numero = delivery_form.cleaned_data['numero_unico']
+                area   = delivery_form.cleaned_data['area_destino']
+
+                try:
+                    caja = Box.objects.get(modelo=modelo, numero_unico=numero, en_bodega=True)
+                except Box.DoesNotExist:
+                    messages.error(request, "La caja seleccionada no está disponible.")
+                else:
+                    BoxDeliveryRecord.objects.create(
+                        caja=caja,
+                        area_destino=area,
+                        usuario=request.user,
+                        sin_cambios=False
+                    )
+                    caja.en_bodega = False
+                    caja.save()
+                    messages.success(request, "Entrega registrada.")
+                return redirect('inventario')
+
+        elif 'sin_cambios' in request.POST:
+            today = now().date()
+            already_exists = BoxDeliveryRecord.objects.filter(
+                usuario=request.user,
+                sin_cambios=True,
+                fecha_hora__date=today
+            ).exists()
+            if already_exists:
+                messages.info(request, "Ya registraste 'Sin cambios' hoy.")
+            else:
+                BoxDeliveryRecord.objects.create(
+                    usuario=request.user,
+                    sin_cambios=True
+                )
+                messages.success(request, "Fin de turno registrado sin entregas.")
+            return redirect('inventario')
+
+    historial = BoxDeliveryRecord.objects.filter(
+        usuario=request.user,
+        fecha_hora__date=now().date()
+    ).order_by('-fecha_hora')
+
+    modelo_cajas = {}
+    for modelo in BoxModel.objects.all():
+        cajas = Box.objects.filter(modelo=modelo, en_bodega=True).values_list('numero_unico', flat=True)
+        modelo_cajas[modelo.id] = list(cajas)
+
+    return render(request, 'core/inventario.html', {
+        'tabla': tabla,
+        'add_box_form': add_box_form,
+        'delivery_form': delivery_form,
+        'historial': historial,
+        'modelo_cajas': modelo_cajas,
+    })
+
+
+
+#core/models.py
+
+
+
+class BoxModel(models.Model):
+    nombre       = models.CharField(max_length=50, unique=True)
+    descripcion  = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.nombre
+
+class Box(models.Model):
+    numero_unico = models.CharField(max_length=20)  # Ya no es unique=True
+    modelo       = models.ForeignKey(BoxModel, on_delete=models.CASCADE, related_name='cajas')
+    en_bodega    = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.modelo.nombre} — {self.numero_unico}"
+
+    class Meta:
+       
+        verbose_name = "Caja"
+        verbose_name_plural = "Cajas"
+
+class MovementLog(models.Model):
+    TIPO_CHOICES = [
+        ('salida', 'Salida'),
+        ('retorno', 'Retorno'),
+    ]
+    caja         = models.ForeignKey(Box, on_delete=models.CASCADE, related_name='movimientos')
+    usuario      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    fecha_hora   = models.DateTimeField(auto_now_add=True)
+    tipo         = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    area_destino = models.CharField(max_length=100)
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} | {self.caja.numero_unico} @ {self.fecha_hora:%Y-%m-%d %H:%M}"
+    
+
+###############################################################
+
+class BoxDeliveryRecord(models.Model):
+    caja         = models.ForeignKey(Box, on_delete=models.CASCADE, null=True, blank=True)
+    area_destino = models.CharField(max_length=100, blank=True)
+    usuario      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    fecha_hora   = models.DateTimeField(auto_now_add=True)
+    sin_cambios  = models.BooleanField(default=False)
+
+    def __str__(self):
+        if self.sin_cambios:
+            return f"[Sin cambios] {self.usuario} - {self.fecha_hora.strftime('%d/%m %I:%M %p')}"
+        return f"{self.caja} → {self.area_destino} ({self.fecha_hora.strftime('%I:%M %p')})"
+
+# core/templates/core/inventario.html 
+
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Inventario de Cajas</h2>
+
+    <!-- Formulario para agregar nuevas cajas -->
+    <form method="post" class="card p-3 mb-4">
+        {% csrf_token %}
+        <h5><i class="bi bi-plus-square"></i> Agregar nueva caja</h5>
+        {{ add_box_form.as_p }}
+        <button type="submit" name="add_box" class="btn btn-primary">Agregar Caja</button>
+    </form>
+
+    <!-- Tabla de cajas disponibles en bodega -->
+    <h4>Cajas disponibles</h4>
+    <table id="tablaInventario" class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>MODELO</th>
+                <th>EN BODEGA (números)</th>
+                <th>TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in tabla %}
+            <tr>
+                <td>{{ row.modelo }}</td>
+                <td>{{ row.numeros }}</td>
+                <td>{{ row.total }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Formulario para registrar entrega con modelo + numero separados -->
+    <form method="post" class="card p-3 mb-4">
+        {% csrf_token %}
+        <h5><i class="bi bi-box-arrow-up"></i> Registrar Entrega</h5>
+
+        <div class="mb-3">
+            {{ delivery_form.modelo.label_tag }}
+            {{ delivery_form.modelo }}
+        </div>
+        <div class="mb-3">
+            <label for="id_numero_unico">Número de caja</label>
+            <select name="numero_unico" id="id_numero_unico" class="form-select">
+                <option value="">Seleccione un modelo primero</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            {{ delivery_form.area_destino.label_tag }}
+            {{ delivery_form.area_destino }}
+        </div>
+        <button type="submit" name="register_delivery" class="btn btn-warning">Registrar Entrega</button>
+    </form>
+
+    <!-- Botón "Sin cambios" -->
+    <form method="post" class="mb-4">
+        {% csrf_token %}
+        <button type="submit" name="sin_cambios" class="btn btn-outline-secondary">
+            <i class="bi bi-check2-circle"></i> Registrar "Sin cambios"
+        </button>
+    </form>
+
+    <!-- Historial del día actual -->
+    <h4>Historial de entregas de hoy</h4>
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>MODELO</th>
+                <th>NÚMERO</th>
+                <th>ÁREA DESTINO</th>
+                <th>HORA</th>
+                <th>USUARIO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in historial %}
+            <tr>
+                <td>{% if not r.sin_cambios %}{{ r.caja.modelo.nombre }}{% else %}—{% endif %}</td>
+                <td>{% if not r.sin_cambios %}{{ r.caja.numero_unico }}{% else %}—{% endif %}</td>
+                <td>{% if not r.sin_cambios %}{{ r.area_destino }}{% else %}SIN CAMBIOS{% endif %}</td>
+                <td>{{ r.fecha_hora|date:"h:i A" }}</td>
+                <td>{{ r.usuario.username }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">No hay registros hoy.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    const modeloCajas = {{ modelo_cajas|safe }};
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const modeloSelect = document.getElementById("id_modelo");
+        const numeroSelect = document.getElementById("id_numero_unico");
+
+        modeloSelect.addEventListener("change", function() {
+            const modeloId = this.value;
+            numeroSelect.innerHTML = "";
+
+            if (modeloId && modeloCajas[modeloId]) {
+                modeloCajas[modeloId].forEach(function(numero) {
+                    const opt = document.createElement("option");
+                    opt.value = numero;
+                    opt.textContent = numero;
+                    numeroSelect.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement("option");
+                opt.value = "";
+                opt.textContent = "Seleccione un modelo primero";
+                numeroSelect.appendChild(opt);
+            }
+        });
+    });
+</script>
+<script> new DataTable('#tablaInventario'); </script>
+{% endblock %}
+
+
+#core/forms.py 
+
+
+class AddBoxForm(forms.ModelForm):
+    class Meta:
+        model = Box
+        fields = ['modelo', 'numero_unico']
+
+class BoxDeliveryForm(forms.Form):
+    modelo = forms.ModelChoiceField(queryset=BoxModel.objects.all(), label='Modelo')
+    numero_unico = forms.ChoiceField(label='Número de caja')
+    area_destino = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={'placeholder': 'Ej. FARMACIA'})
+    )
+
+
+

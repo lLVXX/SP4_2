@@ -23,4 +23,11 @@ urlpatterns = [
     path('admin_global/workzones/crear/', views.crear_workzone, name='crear_workzone'),
     path('admin_global/workzones/listar/', views.listar_workzones, name='listar_workzones'),
     path('admin_global/admins/crear/', views.crear_admin_zone, name='crear_admin_zone'),
+
+    # Inventario 
+    
+    path('inventario/', views.inventario,          name='inventario'),
+   
+
+
 ]

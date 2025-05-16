@@ -78,7 +78,7 @@ WSGI_APPLICATION = 'SP_VI.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'PR_2',
+        'NAME': 'shato',
         'USER': 'postgres',
         'PASSWORD': '12345678',
         'HOST': 'localhost',

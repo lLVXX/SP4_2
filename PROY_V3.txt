@@ -1,0 +1,654 @@
+# core/views.py 
+
+# core/views.py
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.utils.dateparse import parse_date
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth import update_session_auth_hash
+
+from .forms import WorkZoneForm, AdminZoneCreationForm, CustomLoginForm
+from .models import WorkZone
+
+
+from .models import BoxModel, Box
+from .forms import MovementLogForm
+
+
+Usuario = get_user_model()
+
+# ============================ Helpers ============================
+
+def is_admin_or_operator(u):
+    return u.is_authenticated and u.user_type in ('admin_zone', 'operador')
+
+def is_admingl(user):
+    return user.is_authenticated and user.user_type == 'admin_global'
+
+def is_admin_zone(user):
+    return user.is_authenticated and user.user_type == 'admin_zone'
+
+def redirect_user_based_on_role(user):
+    if user.user_type == 'operador':
+        if user.workzone and user.workzone.nombre.lower() == 'hospital':
+            return redirect('InicioOperadorHospital')
+        elif user.workzone and user.workzone.nombre.lower() == 'clinica':
+            return redirect('InicioOperadorClinica')
+    elif user.user_type == 'admin_zone':
+        if user.workzone and user.workzone.nombre.lower() == 'hospital':
+            return redirect('InicioAdminHospital')
+        elif user.workzone and user.workzone.nombre.lower() == 'clinica':
+            return redirect('InicioAdminClinica')
+    elif user.user_type == 'admin_global':
+        return redirect('InicioAdminGl')
+    return redirect('Ingreso')
+
+# ============================ Autenticación ============================
+
+def home(request):
+    if request.user.is_authenticated:
+        return redirect_user_based_on_role(request.user)
+    return render(request, 'core/home.html')
+
+def Ingreso(request):
+    if request.method == 'POST':
+        form = CustomLoginForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            return redirect_user_based_on_role(user)
+        else:
+            messages.error(request, 'Usuario o contraseña incorrectos.')
+    else:
+        form = CustomLoginForm()
+    return render(request, 'core/Ingreso.html', {'form': form})
+
+@login_required
+def logout_view(request):
+    logout(request)
+    return redirect('Ingreso')
+
+# ============================ Vistas Operador ============================
+
+@login_required
+def InicioOperadorHospital(request):
+    if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('Ingreso')
+    return render(request, 'core/Operador/InicioOperadorHospital.html')
+
+@login_required
+def InicioOperadorClinica(request):
+    if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'clinica':
+        return redirect('Ingreso')
+    return render(request, 'core/Operador/InicioOperadorClinica.html')
+
+@login_required
+def cambiar_contrasena(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)
+            messages.success(request, 'Contraseña actualizada correctamente!')
+            return redirect_user_based_on_role(request.user)
+        else:
+            messages.error(request, 'Por favor corrija los errores.')
+    else:
+        form = PasswordChangeForm(request.user)
+    return render(request, 'core/Operador/cambiar_contrasena.html', {'form': form})
+
+# ============================ Vistas Admin por Zona ============================
+
+@login_required
+def InicioAdminHospital(request):
+    if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('Ingreso')
+    return render(request, 'core/Admin/InicioAdminHospital.html')
+
+@login_required
+def InicioAdminClinica(request):
+    if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'clinica':
+        return redirect('Ingreso')
+    return render(request, 'core/Admin/InicioAdminClinica.html')
+
+@login_required
+def HospitalGestionUsuarios(request):
+    if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('Ingreso')
+
+    if request.method == 'POST':
+        if 'delete_user' in request.POST:
+            user_id = request.POST.get('delete_user')
+            user = get_object_or_404(Usuario, id=user_id, user_type='operador', workzone=request.user.workzone)
+            user.delete()
+            messages.success(request, f"Operador '{user.username}' eliminado correctamente.")
+            return redirect('HospitalGestionUsuarios')
+
+        username = request.POST.get('username')
+        first_name = request.POST.get('first_name')
+        last_name = request.POST.get('last_name')
+        date_of_entry = request.POST.get('date_of_entry')
+        password = '12345678'
+
+        if not username:
+            messages.error(request, "El nombre de usuario es requerido.")
+        elif Usuario.objects.filter(username=username).exists():
+            messages.error(request, "El nombre de usuario ya existe.")
+        else:
+            user = Usuario.objects.create_user(
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                password=password,
+                user_type='operador',
+                workzone=request.user.workzone
+            )
+            user.date_of_entry = parse_date(date_of_entry) if date_of_entry else None
+            user.save()
+            messages.success(request, f"Operador '{username}' creado exitosamente con contraseña por defecto.")
+            return redirect('HospitalGestionUsuarios')
+
+    operadores = Usuario.objects.filter(user_type='operador', workzone=request.user.workzone)
+    return render(request, 'core/Admin/HospitalGestionUsuarios.html', {'operadores': operadores})
+
+# ============================ Vistas Admin Global ============================
+
+@login_required
+@user_passes_test(is_admingl)
+def InicioAdminGl(request):
+    return render(request, 'core/AdminGL/InicioAdminGl.html')
+
+@login_required
+@user_passes_test(is_admingl)
+def crear_workzone(request):
+    if request.method == 'POST':
+        form = WorkZoneForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Zona de trabajo creada exitosamente.")
+            return redirect('listar_workzones')
+    else:
+        form = WorkZoneForm()
+    return render(request, 'core/AdminGL/crear_workzone.html', {'form': form})
+
+@login_required
+@user_passes_test(is_admingl)
+def crear_admin_zone(request):
+    if request.method == 'POST':
+        form = AdminZoneCreationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Administrador de zona creado exitosamente.")
+            return redirect('crear_admin_zone')
+    else:
+        form = AdminZoneCreationForm()
+    return render(request, 'core/AdminGL/crear_admin_zone.html', {'form': form})
+
+@login_required
+@user_passes_test(is_admingl)
+def listar_workzones(request):
+    zonas = WorkZone.objects.all()
+    return render(request, 'core/AdminGL/listar_workzones.html', {'zonas': zonas})
+
+
+
+###########################################################################################################
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def inventario(request):
+    modelos = BoxModel.objects.all().order_by('nombre')
+    tabla = []
+    for m in modelos:
+        cajas = m.cajas.filter(en_bodega=True)
+        numeros = [c.numero_unico for c in cajas]
+        tabla.append({
+            'modelo': m.nombre,
+            'numeros': ", ".join(numeros) if numeros else "-",
+            'total': cajas.count()
+        })
+    return render(request, 'core/inventario.html', {'tabla': tabla})
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def registrar_salida(request):
+    if request.method == 'POST':
+        form = MovementLogForm(request.POST)
+        if form.is_valid():
+            mov = form.save(commit=False)
+            caja = mov.caja
+            if not caja.en_bodega:
+                form.add_error('caja', 'La caja ya está fuera de bodega.')
+            else:
+                mov.usuario = request.user
+                mov.tipo    = 'salida'
+                mov.save()
+                caja.en_bodega = False
+                caja.save()
+                messages.success(request, 'Salida registrada.')
+                return redirect('inventario')
+    else:
+        form = MovementLogForm()
+    return render(request, 'core/registrar_salida.html', {'form': form})
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def registrar_retorno(request):
+    if request.method == 'POST':
+        form = MovementLogForm(request.POST)
+        if form.is_valid():
+            mov = form.save(commit=False)
+            caja = mov.caja
+            if caja.en_bodega:
+                form.add_error('caja', 'La caja ya está en bodega.')
+            else:
+                mov.usuario = request.user
+                mov.tipo    = 'retorno'
+                mov.save()
+                caja.en_bodega = True
+                caja.save()
+                messages.success(request, 'Retorno registrado.')
+                return redirect('inventario')
+    else:
+        form = MovementLogForm()
+    return render(request, 'core/registrar_retorno.html', {'form': form})
+
+
+# core/urls.py 
+
+
+# core/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Public views
+    path('', views.home, name='home'),
+    path('Ingreso/', views.Ingreso, name='Ingreso'),
+    path('logout/', views.logout_view, name='logout'),
+
+    # Operador views
+    path('InicioOperadorHospital/', views.InicioOperadorHospital, name='InicioOperadorHospital'),
+    path('InicioOperadorClinica/', views.InicioOperadorClinica, name='InicioOperadorClinica'),
+    path('cambiar_contrasena/', views.cambiar_contrasena, name='cambiar_contrasena'),
+
+    # Admin Zona views
+    path('InicioAdminHospital/', views.InicioAdminHospital, name='InicioAdminHospital'),
+    path('InicioAdminClinica/', views.InicioAdminClinica, name='InicioAdminClinica'),
+    path('HospitalGestionUsuarios/', views.HospitalGestionUsuarios, name='HospitalGestionUsuarios'),
+
+    # Admin Global views
+    path('InicioAdminGl/', views.InicioAdminGl, name='InicioAdminGl'),
+    path('admin_global/workzones/crear/', views.crear_workzone, name='crear_workzone'),
+    path('admin_global/workzones/listar/', views.listar_workzones, name='listar_workzones'),
+    path('admin_global/admins/crear/', views.crear_admin_zone, name='crear_admin_zone'),
+
+    # Inventario 
+    
+    path('inventario/', views.inventario,          name='inventario'),
+    path('salida/',    views.registrar_salida,    name='registrar_salida'),
+    path('retorno/',   views.registrar_retorno,   name='registrar_retorno'),
+
+
+]
+
+
+
+# core/models.py 
+
+
+# core/models.py
+from django.db import models
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+
+class WorkZone(models.Model):
+    nombre = models.CharField(max_length=100)
+    numero = models.CharField(max_length=50)
+    correo = models.EmailField()
+    direccion = models.TextField()
+
+    def __str__(self):
+        return self.nombre
+
+class Evento(models.Model):
+    workzone = models.ForeignKey(WorkZone, on_delete=models.CASCADE, related_name='eventos')
+    tipo = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100)
+    problema = models.TextField()
+    solucion = models.TextField()
+    fecha = models.DateTimeField(auto_now_add=True) 
+
+    def __str__(self):
+        return f"{self.tipo} - {self.nombre}"
+    
+
+class CustomUser(AbstractUser):
+    USER_TYPE_CHOICES = (
+        ('admin_global', 'Administrador Global'),
+        ('admin_zone', 'Administrador Zona'),
+        ('operator', 'Operador'),
+    )
+    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='operator')
+    workzone = models.ForeignKey('WorkZone', null=True, blank=True, on_delete=models.SET_NULL)
+    date_of_entry = models.DateField(null=True, blank=True)
+
+#########################################################################################3
+
+
+class BoxModel(models.Model):
+    nombre       = models.CharField(max_length=50, unique=True)
+    descripcion  = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.nombre
+
+class Box(models.Model):
+    numero_unico = models.CharField(max_length=20)  # Ya no es unique=True
+    modelo       = models.ForeignKey(BoxModel, on_delete=models.CASCADE, related_name='cajas')
+    en_bodega    = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.modelo.nombre} — {self.numero_unico}"
+
+    class Meta:
+        unique_together = ('modelo', 'numero_unico')  # <-- Unicidad combinada
+        verbose_name = "Caja"
+        verbose_name_plural = "Cajas"
+
+class MovementLog(models.Model):
+    TIPO_CHOICES = [
+        ('salida', 'Salida'),
+        ('retorno', 'Retorno'),
+    ]
+    caja         = models.ForeignKey(Box, on_delete=models.CASCADE, related_name='movimientos')
+    usuario      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    fecha_hora   = models.DateTimeField(auto_now_add=True)
+    tipo         = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    area_destino = models.CharField(max_length=100)
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} | {self.caja.numero_unico} @ {self.fecha_hora:%Y-%m-%d %H:%M}"
+
+
+# core/forms.py 
+
+
+# core/forms.py
+
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth import get_user_model
+
+from .models import WorkZone, CustomUser,  MovementLog
+
+
+
+Usuario = get_user_model()
+
+class CustomLoginForm(AuthenticationForm):
+    username = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre de usuario'})
+    )
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Contraseña'})
+    )
+
+class OperadorCreationForm(UserCreationForm):
+    class Meta:
+        model = Usuario
+        fields = ['username', 'first_name', 'last_name', 'email', 'password1', 'password2']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.user_type = 'operador'
+        user.workzone = 'hospital'
+        if commit:
+            user.save()
+        return user
+
+
+
+class WorkZoneForm(forms.ModelForm):
+    class Meta:
+        model = WorkZone
+        fields = ['nombre', 'numero', 'correo', 'direccion']
+
+class AdminZoneCreationForm(forms.ModelForm):
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'first_name', 'last_name', 'email', 'workzone']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.user_type = 'admin_zone'
+        user.set_password('12345678')  # Clave por defecto
+        if commit:
+            user.save()
+        return user
+    
+
+###################################################################
+
+class MovementLogForm(forms.ModelForm):
+    class Meta:
+        model = MovementLog
+        fields = ['caja', 'area_destino']
+        widgets = {
+            'area_destino': forms.TextInput(attrs={'placeholder': 'Ej. pabellón'})
+        }
+
+
+core/templates/core/inventario.html
+
+
+{% extends 'core/base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Inventario de Cajas</h2>
+    <table id="tablaInventario" class="table table-striped">
+        <thead>
+            <tr>
+                <th>MODELO</th>
+                <th>EN BODEGA (números)</th>
+                <th>TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in tabla %}
+            <tr>
+                <td>{{ row.modelo }}</td>
+                <td>{{ row.numeros }}</td>
+                <td>{{ row.total }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="{% url 'registrar_salida' %}" class="btn btn-warning">Registrar Salida</a>
+    <a href="{% url 'registrar_retorno' %}" class="btn btn-success">Registrar Retorno</a>
+</div>
+{% endblock %}
+{% block script %}
+<script> new DataTable('#tablaInventario'); </script>
+{% endblock %}
+
+
+
+
+core/templates/core/base.html
+
+
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ nombre_tienda|default:"SP_VI Sistema" }}</title>
+
+    <link rel="shortcut icon" href="{% static 'core/images/favicon.png' %}" type="image/x-icon" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="{% static 'core/css/style.css' %}" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    
+    {% block stylesheet %}{% endblock %}
+</head>
+
+<body>
+
+{% block navbar %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-gradient-midnight shadow">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{% url 'home' %}">
+            <img src="{% static 'core/images/logo.png' %}" alt="Logo" height="40" class="d-inline-block align-top">
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarMain">
+            <ul class="navbar-nav me-auto">
+
+                <!-- INICIO: dinámica según usuario -->
+                {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        {% if user.user_type == 'admin_global' %}
+                            <a class="nav-link" href="{% url 'InicioAdminGl' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'admin_zone' and user.workzone.nombre|lower == 'hospital' %}
+                            <a class="nav-link" href="{% url 'InicioAdminHospital' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'admin_zone' and user.workzone.nombre|lower == 'clinica' %}
+                            <a class="nav-link" href="{% url 'InicioAdminClinica' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'hospital' %}
+                            <a class="nav-link" href="{% url 'InicioOperadorHospital' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% elif user.user_type == 'operador' and user.workzone.nombre|lower == 'clinica' %}
+                            <a class="nav-link" href="{% url 'InicioOperadorClinica' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% else %}
+                            <a class="nav-link" href="{% url 'home' %}">
+                                <i class="bi bi-house-fill"></i> Inicio
+                            </a>
+                        {% endif %}
+                    </li>
+
+                    <!-- Menú por rol -->
+                    {% if user.user_type == 'admin_global' %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-globe"></i> Admin Global
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'InicioAdminGl' %}">Dashboard</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'crear_workzone' %}">Crear Zona</a></li>
+                                <li><a class="dropdown-item" href="{% url 'crear_admin_zone' %}">Crear Administrador</a></li>
+                                <li><a class="dropdown-item" href="{% url 'listar_workzones' %}">Ver Zonas</a></li>
+                            </ul>
+                        </li>
+                    {% elif user.user_type == 'admin_zone' %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'HospitalGestionUsuarios' %}">
+                                <i class="bi bi-people-fill"></i> Gestionar Operadores
+                            </a>
+                        </li>
+
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'inventario' %}">
+                                <i class="bi bi-people-fill"></i> inventario
+                            </a>
+                        </li>
+
+                        
+                    {% elif user.user_type == 'operador' %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'cambiar_contrasena' %}">
+                                <i class="bi bi-key"></i> Cambiar Contraseña
+                            </a>
+                        </li>
+
+                         <li class="nav-item">
+                            <a class="nav-link" href="{% url 'inventario' %}">
+                                <i class="bi bi-people-fill"></i> inventario
+                            </a>
+                        </li>
+
+
+
+                    {% endif %}
+                {% else %}
+                    <!-- Usuario no autenticado -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'home' %}">
+                            <i class="bi bi-house-door-fill"></i> Inicio
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+
+            <!-- Usuario y logout -->
+            <ul class="navbar-nav ms-auto">
+                {% if user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><span class="dropdown-item-text">
+                                <small class="text-muted">Rol: {{ user.get_user_type_display }}</small>
+                            </span></li>
+                            {% if user.workzone %}
+                                <li><span class="dropdown-item-text">
+                                    <small class="text-muted">Zona: {{ user.workzone.nombre }}</small>
+                                </span></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'cambiar_contrasena' %}">
+                                <i class="bi bi-key-fill"></i> Cambiar contraseña
+                            </a></li>
+                            <li>
+                                <form method="POST" action="{% url 'logout' %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item">
+                                        <i class="bi bi-box-arrow-right"></i> Cerrar sesión
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'Ingreso' %}">
+                            <i class="bi bi-box-arrow-in-right"></i> Ingresar
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>
+{% endblock navbar %}
+
+{% block content %}
+{% endblock content %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

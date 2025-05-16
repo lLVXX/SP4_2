@@ -1,21 +1,31 @@
-# core/views.py
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.conf import settings
+from django.utils.timezone import now, make_aware
 from django.contrib.auth import get_user_model
 from django.utils.dateparse import parse_date
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth import update_session_auth_hash
+from datetime import datetime
 
-from .forms import WorkZoneForm, AdminZoneCreationForm, CustomLoginForm
-from .models import WorkZone
+from .forms import (
+    WorkZoneForm,
+    AdminZoneCreationForm,
+    CustomLoginForm,
+    AddBoxForm,
+    BoxDeliveryForm,
+    MovementLogForm
+)
+from .models import WorkZone, BoxModel, Box, BoxDeliveryRecord
 
 Usuario = get_user_model()
 
 # ============================ Helpers ============================
+
+def is_admin_or_operator(u):
+    return u.is_authenticated and u.user_type in ('admin_zone', 'operador')
 
 def is_admingl(user):
     return user.is_authenticated and user.user_type == 'admin_global'
@@ -184,3 +194,103 @@ def crear_admin_zone(request):
 def listar_workzones(request):
     zonas = WorkZone.objects.all()
     return render(request, 'core/AdminGL/listar_workzones.html', {'zonas': zonas})
+
+# ============================ Inventario ============================
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def inventario(request):
+    modelos = BoxModel.objects.all().order_by('nombre')
+
+    tabla_por_modelo = []
+    for m in modelos:
+        cajas = m.cajas.filter(en_bodega=True)
+        numeros = [c.numero_unico for c in cajas]
+        tabla_por_modelo.append({
+            'modelo': m.nombre,
+            'numeros': numeros,  # lista para iterar
+            'total': cajas.count()
+        })
+
+    add_box_form = AddBoxForm()
+    modelo_id = None
+
+    if request.method == 'POST':
+        if 'add_box' in request.POST:
+            add_box_form = AddBoxForm(request.POST)
+            if add_box_form.is_valid():
+                new_box = add_box_form.save(commit=False)
+                if Box.objects.filter(modelo=new_box.modelo, numero_unico=new_box.numero_unico, en_bodega=True).exists():
+                    messages.error(request, "Ya existe una caja en bodega con ese modelo y número.")
+                else:
+                    new_box.en_bodega = True
+                    new_box.save()
+                    messages.success(request, "Caja agregada exitosamente.")
+                return redirect('inventario')
+
+        elif 'filtrar_modelo' in request.POST:
+            modelo_id = request.POST.get('modelo')
+            delivery_form = BoxDeliveryForm(request.POST, modelo_id=modelo_id)
+
+        elif 'register_delivery' in request.POST:
+            modelo_id = request.POST.get('modelo')
+            delivery_form = BoxDeliveryForm(request.POST, modelo_id=modelo_id)
+            if delivery_form.is_valid():
+                modelo = delivery_form.cleaned_data['modelo']
+                numero = delivery_form.cleaned_data['numero_unico']
+                area = delivery_form.cleaned_data['area_destino']
+                hora = delivery_form.cleaned_data['hora_entrega']
+
+                fecha = now().date()
+                fecha_hora = make_aware(datetime.combine(fecha, hora))
+
+                try:
+                    caja = Box.objects.get(modelo=modelo, numero_unico=numero, en_bodega=True)
+                except Box.DoesNotExist:
+                    messages.error(request, "La caja seleccionada no está disponible.")
+                else:
+                    BoxDeliveryRecord.objects.create(
+                        caja=caja,
+                        area_destino=area,
+                        usuario=request.user,
+                        sin_cambios=False,
+                        fecha_hora=fecha_hora
+                    )
+                    caja.en_bodega = False
+                    caja.save()
+                    messages.success(request, "Entrega registrada.")
+                return redirect('inventario')
+
+        elif 'sin_cambios' in request.POST:
+            today = now().date()
+            already_exists = BoxDeliveryRecord.objects.filter(
+                usuario=request.user,
+                sin_cambios=True,
+                fecha_hora__date=today
+            ).exists()
+            if already_exists:
+                messages.info(request, "Ya registraste 'Sin cambios' hoy.")
+            else:
+                BoxDeliveryRecord.objects.create(
+                    usuario=request.user,
+                    sin_cambios=True,
+                    fecha_hora=now()
+                )
+                messages.success(request, "Fin de turno registrado sin entregas.")
+            return redirect('inventario')
+
+    else:
+        delivery_form = BoxDeliveryForm()
+
+    historial = BoxDeliveryRecord.objects.filter(
+        usuario=request.user,
+        fecha_hora__date=now().date()
+    ).order_by('-fecha_hora')
+
+    return render(request, 'core/inventario.html', {
+        'tabla_por_modelo': tabla_por_modelo,
+        'add_box_form': add_box_form,
+        'delivery_form': delivery_form,
+        'historial': historial,
+    })

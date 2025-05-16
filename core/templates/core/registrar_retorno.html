@@ -1,0 +1,39 @@
+{% extends 'core/base.html' %}
+{% load form_tags %}
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4"><i class="bi bi-box-arrow-in-down"></i> Registrar Retorno de Caja</h2>
+
+    {% if form.errors %}
+        <div class="alert alert-danger">
+            <strong>Errores en el formulario:</strong>
+            <ul>
+                {% for field in form %}
+                    {% for error in field.errors %}
+                        <li>{{ field.label }}: {{ error }}</li>
+                    {% endfor %}
+                {% endfor %}
+                {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <form method="post" class="card p-4 shadow-sm">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="id_caja" class="form-label">Caja retornada</label>
+            {{ form.caja|add_class:"form-select" }}
+        </div>
+        <div class="mb-3">
+            <label for="id_area_destino" class="form-label">Área origen</label>
+            {{ form.area_destino|add_class:"form-control" }}
+        </div>
+        <button type="submit" class="btn btn-success">
+            <i class="bi bi-box-arrow-in-down"></i> Confirmar Retorno
+        </button>
+        <a href="{% url 'inventario' %}" class="btn btn-secondary">Cancelar</a>
+    </form>
+</div>
+{% endblock content %}
