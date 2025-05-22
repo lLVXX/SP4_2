@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'core',
 ]
 
@@ -78,7 +79,7 @@ WSGI_APPLICATION = 'SP_VI.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'shato',
+        'NAME': 'TESTEO_V3',
         'USER': 'postgres',
         'PASSWORD': '12345678',
         'HOST': 'localhost',

@@ -6,9 +6,9 @@ from django.contrib.auth import get_user_model
 
 from .models import *
 
-
-
 Usuario = get_user_model()
+
+################################################ USUARIOS ################################################
 
 class CustomLoginForm(AuthenticationForm):
     username = forms.CharField(
@@ -31,7 +31,7 @@ class OperadorCreationForm(UserCreationForm):
             user.save()
         return user
 
-
+################################################ ZONA DE TRABAJO ################################################
 
 class WorkZoneForm(forms.ModelForm):
     class Meta:
@@ -50,9 +50,8 @@ class AdminZoneCreationForm(forms.ModelForm):
         if commit:
             user.save()
         return user
-    
 
-###################################################################
+###################################  REGISTROS BODEGA ################################
 
 class MovementLogForm(forms.ModelForm):
     class Meta:
@@ -62,17 +61,22 @@ class MovementLogForm(forms.ModelForm):
             'area_destino': forms.TextInput(attrs={'placeholder': 'Ej. pabellón'})
         }
 
-
-#############################################################3
-
-
-
-
+#############################################################
 
 class AddBoxForm(forms.ModelForm):
     class Meta:
         model = Box
-        fields = ['modelo', 'numero_unico']
+        fields = ['modelo', 'numero_unico', 'numero_de_serie']  # <-- actualizado
+        labels = {
+            'numero_unico': 'Número de Caja',
+            'numero_de_serie': 'Número de Serie',
+        }
+
+    def clean_numero_de_serie(self):
+        numero = self.cleaned_data.get('numero_de_serie')
+        if Box.objects.filter(numero_de_serie=numero).exists():
+            raise forms.ValidationError("Este número de serie ya está registrado.")
+        return numero
 
 class BoxDeliveryForm(forms.Form):
     modelo = forms.ModelChoiceField(queryset=BoxModel.objects.all(), label='Modelo')
@@ -100,3 +104,8 @@ class BoxDeliveryForm(forms.Form):
             self.fields['hora_entrega'].required = True
         else:
             self.fields['numero_unico'].choices = []
+
+############# FIN DE TURNO ###############
+
+class ConfirmarFinTurnoForm(forms.Form):
+    confirmar = forms.BooleanField(label='Confirmo que deseo finalizar el turno')

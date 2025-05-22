@@ -1,0 +1,31 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Historial de Fines de Turno</h2>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Usuario</th>
+                <th>Fecha y Hora</th>
+                <th>Ver</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in reportes %}
+            <tr>
+                <td>{{ r.usuario }}</td>
+                <td>{{ r.fecha_hora|date:"d/m/Y H:i" }}</td>
+                <td>
+                    <a href="{% url 'fin_de_turno_resumen' r.pk %}" class="btn btn-sm btn-outline-primary">Ver</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3" class="text-muted text-center">No hay reportes.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

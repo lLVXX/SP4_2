@@ -9,6 +9,8 @@ from django.utils.dateparse import parse_date
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth import update_session_auth_hash
 from datetime import datetime
+import json
+from django.utils import timezone
 
 from .forms import (
     WorkZoneForm,
@@ -16,14 +18,13 @@ from .forms import (
     CustomLoginForm,
     AddBoxForm,
     BoxDeliveryForm,
-    MovementLogForm
+    ConfirmarFinTurnoForm
 )
-from .models import WorkZone, BoxModel, Box, BoxDeliveryRecord
+from .models import WorkZone, BoxModel, Box, BoxDeliveryRecord, FinDeTurnoRecord 
 
 Usuario = get_user_model()
 
 # ============================ Helpers ============================
-
 def is_admin_or_operator(u):
     return u.is_authenticated and u.user_type in ('admin_zone', 'operador')
 
@@ -49,7 +50,6 @@ def redirect_user_based_on_role(user):
     return redirect('Ingreso')
 
 # ============================ Autenticación ============================
-
 def home(request):
     if request.user.is_authenticated:
         return redirect_user_based_on_role(request.user)
@@ -74,7 +74,6 @@ def logout_view(request):
     return redirect('Ingreso')
 
 # ============================ Vistas Operador ============================
-
 @login_required
 def InicioOperadorHospital(request):
     if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
@@ -103,7 +102,6 @@ def cambiar_contrasena(request):
     return render(request, 'core/Operador/cambiar_contrasena.html', {'form': form})
 
 # ============================ Vistas Admin por Zona ============================
-
 @login_required
 def InicioAdminHospital(request):
     if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'hospital':
@@ -157,7 +155,6 @@ def HospitalGestionUsuarios(request):
     return render(request, 'core/Admin/HospitalGestionUsuarios.html', {'operadores': operadores})
 
 # ============================ Vistas Admin Global ============================
-
 @login_required
 @user_passes_test(is_admingl)
 def InicioAdminGl(request):
@@ -196,26 +193,16 @@ def listar_workzones(request):
     return render(request, 'core/AdminGL/listar_workzones.html', {'zonas': zonas})
 
 # ============================ Inventario ============================
-
-
 @login_required
-@user_passes_test(is_admin_or_operator)
 def inventario(request):
     modelos = BoxModel.objects.all().order_by('nombre')
-
     tabla_por_modelo = []
     for m in modelos:
         cajas = m.cajas.filter(en_bodega=True)
         numeros = [c.numero_unico for c in cajas]
-        tabla_por_modelo.append({
-            'modelo': m.nombre,
-            'numeros': numeros,  # lista para iterar
-            'total': cajas.count()
-        })
+        tabla_por_modelo.append({'modelo': m.nombre, 'numeros': numeros, 'total': cajas.count()})
 
     add_box_form = AddBoxForm()
-    modelo_id = None
-
     if request.method == 'POST':
         if 'add_box' in request.POST:
             add_box_form = AddBoxForm(request.POST)
@@ -294,3 +281,71 @@ def inventario(request):
         'delivery_form': delivery_form,
         'historial': historial,
     })
+
+# ============================ Fin de Turno ============================
+
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def fin_de_turno(request):
+    if request.method == 'POST':
+        usuario = request.user
+        hoy = timezone.now().date()
+
+        entregas_qs = BoxDeliveryRecord.objects.filter(
+            usuario=usuario,
+            fecha_hora__date=hoy,
+            sin_cambios=False
+        ).order_by('fecha_hora')
+
+        lista_entregas = [{
+            'modelo': e.caja.modelo.nombre,
+            'numero': e.caja.numero_unico,
+            'area': e.area_destino,
+            'hora': e.fecha_hora.strftime('%H:%M')
+        } for e in entregas_qs if e.caja]
+
+        inventario_data = []
+        for modelo in BoxModel.objects.all().order_by('nombre'):
+            cajas = Box.objects.filter(modelo=modelo, en_bodega=True)
+            inventario_data.append({
+                'modelo': modelo.nombre,
+                'numeros': [c.numero_unico for c in cajas],
+                'total': cajas.count()
+            })
+
+        record = FinDeTurnoRecord.objects.create(
+            usuario=usuario,
+            entregas=json.dumps(lista_entregas, ensure_ascii=False),
+            inventario=json.dumps(inventario_data, ensure_ascii=False)
+        )
+
+        return redirect('fin_de_turno_resumen', pk=record.pk)
+    return redirect('inventario')
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def fin_de_turno_resumen(request, pk):
+    record = get_object_or_404(FinDeTurnoRecord, pk=pk)
+
+    # Recalcular el estado actual de la bodega, sin depender del valor guardado
+    inventario_actual = []
+    for modelo in BoxModel.objects.all().order_by('nombre'):
+        cajas = Box.objects.filter(modelo=modelo, en_bodega=True)
+        inventario_actual.append({
+            'modelo': modelo.nombre,
+            'numeros': [c.numero_unico for c in cajas],
+            'total': cajas.count()
+        })
+
+    return render(request, 'core/fin_de_turno_resumen.html', {
+        'record': record,
+        'inventario_actual': inventario_actual
+    })
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def listar_reportes(request):
+    reportes = FinDeTurnoRecord.objects.all().order_by('-fecha_hora')
+    return render(request, 'core/listar_reportes.html', {'reportes': reportes})

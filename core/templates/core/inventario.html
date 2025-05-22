@@ -6,108 +6,121 @@
     <h2 class="mb-4">Inventario de Cajas</h2>
 
     <!-- Formulario para agregar nuevas cajas -->
-    <form method="post" class="card p-3 mb-4">
-        {% csrf_token %}
-        <h5><i class="bi bi-plus-square"></i> Agregar nueva caja</h5>
-        {{ add_box_form.as_p }}
-        <button type="submit" name="add_box" class="btn btn-primary">Agregar Caja</button>
+    <form method="post">
+    {% csrf_token %}
+    {{ add_box_form.as_p }}
+    <button type="submit" name="add_box">Agregar Caja</button>
     </form>
 
-    <!-- Formulario para registrar entrega (sin JavaScript) -->
+    <!-- Formulario para registrar entrega -->
     <form method="post" class="card p-3 mb-4">
         {% csrf_token %}
         <h5><i class="bi bi-box-arrow-up"></i> Registrar Entrega</h5>
-
         <div class="mb-3">
             {{ delivery_form.modelo.label_tag }}
             {{ delivery_form.modelo }}
         </div>
-
         {% if delivery_form.fields.numero_unico.choices %}
         <div class="mb-3">
             {{ delivery_form.numero_unico.label_tag }}
             {{ delivery_form.numero_unico }}
         </div>
-
         <div class="mb-3">
             {{ delivery_form.area_destino.label_tag }}
             {{ delivery_form.area_destino }}
         </div>
-
         <div class="mb-3">
             {{ delivery_form.hora_entrega.label_tag }}
             {{ delivery_form.hora_entrega }}
         </div>
-
         <button type="submit" name="register_delivery" class="btn btn-warning">Registrar Entrega</button>
         {% else %}
         <button type="submit" name="filtrar_modelo" class="btn btn-secondary">Filtrar modelo</button>
         {% endif %}
     </form>
 
-    <!-- Tablas separadas por modelo -->
+
+    <h2>Inventario</h2>
+{% for grupo in tabla_por_modelo %}
+    <h4>Modelo: {{ grupo.modelo }} ({{ grupo.total }} disponibles)</h4>
+    <ul>
+        {% for numero in grupo.numeros %}
+            <li>{{ numero }}</li>
+        {% empty %}
+            <li><em>No hay cajas disponibles</em></li>
+        {% endfor %}
+    </ul>
+{% endfor %}
+
     <h4>Cajas disponibles</h4>
     {% for grupo in tabla_por_modelo %}
         <h5>Modelo: {{ grupo.modelo }} (Total: {{ grupo.total }})</h5>
         <table class="table table-striped table-bordered mb-4">
-            <thead>
-                <tr>
-                    <th>Número único</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Número único</th></tr></thead>
             <tbody>
-                {% if grupo.numeros %}
-                    {% for numero in grupo.numeros %}
-                        <tr><td>{{ numero }}</td></tr>
-                    {% endfor %}
-                {% else %}
-                    <tr><td class="text-muted">No hay cajas disponibles</td></tr>
-                {% endif %}
+                {% for numero in grupo.numeros %}
+                <tr><td>{{ numero }}</td></tr>
+                {% empty %}
+                <tr><td class="text-muted">No hay cajas disponibles</td></tr>
+                {% endfor %}
             </tbody>
         </table>
     {% empty %}
         <p>No hay modelos disponibles.</p>
     {% endfor %}
 
-    <!-- Botón \"Sin cambios\" -->
-    <form method="post" class="mb-4">
+    <!-- Sin cambios -->
+    <form method="post">
         {% csrf_token %}
-        <button type="submit" name="sin_cambios" class="btn btn-outline-secondary">
-            <i class="bi bi-check2-circle"></i> Registrar \"Sin cambios\"
-        </button>
+        <button type="submit" name="sin_cambios" class="btn btn-outline-secondary">Registrar "Sin cambios"</button>
     </form>
 
-    <!-- Historial del día actual -->
-    <h4>Historial de entregas de hoy</h4>
-    <table class="table table-bordered table-striped">
-        <thead>
-            <tr>
-                <th>MODELO</th>
-                <th>NÚMERO</th>
-                <th>ÁREA DESTINO</th>
-                <th>HORA</th>
-                <th>USUARIO</th>
-            </tr>
-        </thead>
+    <!-- Botón de fin de turno con modal -->
+    <button type="button" class="btn btn-danger mt-3" data-bs-toggle="modal" data-bs-target="#confirmarFinModal">
+        Generar Fin de Turno
+    </button>
+
+    <!-- Modal de confirmación -->
+    <div class="modal fade" id="confirmarFinModal" tabindex="-1" aria-labelledby="confirmarFinModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <form method="post" action="{% url 'fin_de_turno' %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="confirmarFinModalLabel">Confirmar Fin de Turno</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+              ¿Estás seguro de que deseas generar el reporte de fin de turno? Esta acción no se puede deshacer.
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-danger">Sí, confirmar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historial -->
+    <h4 class="mt-5">Historial de entregas de hoy</h4>
+    <table class="table table-bordered">
+        <thead><tr>
+            <th>Modelo</th><th>Número</th><th>Área</th><th>Hora</th><th>Usuario</th>
+        </tr></thead>
         <tbody>
             {% for r in historial %}
             <tr>
                 <td>{% if not r.sin_cambios %}{{ r.caja.modelo.nombre }}{% else %}—{% endif %}</td>
                 <td>{% if not r.sin_cambios %}{{ r.caja.numero_unico }}{% else %}—{% endif %}</td>
                 <td>{% if not r.sin_cambios %}{{ r.area_destino }}{% else %}SIN CAMBIOS{% endif %}</td>
-                <td>  {{ r.fecha_hora|date:'h:i A' }} </td>
+                <td>{{ r.fecha_hora|time:"H:i" }}</td>
                 <td>{{ r.usuario.username }}</td>
             </tr>
             {% empty %}
-            <tr>
-                <td colspan="5" class="text-center text-muted">No hay registros hoy.</td>
-            </tr>
+            <tr><td colspan="5" class="text-muted text-center">No hay registros</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
-{% endblock %}
-
-{% block script %}
-<script> new DataTable('#tablaInventario'); </script>
 {% endblock %}

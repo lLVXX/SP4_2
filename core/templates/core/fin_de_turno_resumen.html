@@ -1,0 +1,28 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Resumen de Fin de Turno</h2>
+    <p><strong>Usuario:</strong> {{ record.usuario }}</p>
+    <p><strong>Fecha:</strong> {{ record.fecha_hora|date:'d/m/Y H:i' }}</p>
+
+    <hr>
+
+    <h4>Estado Actual de la Bodega</h4>
+    {% for grupo in inventario_actual %}
+        <h5>{{ grupo.modelo }} (Total: {{ grupo.total }})</h5>
+        <ul>
+            {% for numero in grupo.numeros %}
+                <li>{{ numero }}</li>
+            {% empty %}
+                <li class="text-muted">Sin cajas</li>
+            {% endfor %}
+        </ul>
+    {% empty %}
+        <p>No hay modelos en bodega.</p>
+    {% endfor %}
+
+    <a href="{% url 'inventario' %}" class="btn btn-primary mt-4">Volver a Inventario</a>
+</div>
+{% endblock %}

@@ -1,0 +1,883 @@
+# core/views.py 
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
+from django.conf import settings
+from django.utils.timezone import now, make_aware
+from django.contrib.auth import get_user_model
+from django.utils.dateparse import parse_date
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth import update_session_auth_hash
+from datetime import datetime
+import json
+from django.utils import timezone
+
+
+from .forms import (
+    WorkZoneForm,
+    AdminZoneCreationForm,
+    CustomLoginForm,
+    AddBoxForm,
+    BoxDeliveryForm,
+    MovementLogForm
+)
+from .models import WorkZone, BoxModel, Box, BoxDeliveryRecord,FinDeTurnoRecord 
+
+Usuario = get_user_model()
+
+# ============================ Helpers ============================
+
+def is_admin_or_operator(u):
+    return u.is_authenticated and u.user_type in ('admin_zone', 'operador')
+
+def is_admingl(user):
+    return user.is_authenticated and user.user_type == 'admin_global'
+
+def is_admin_zone(user):
+    return user.is_authenticated and user.user_type == 'admin_zone'
+
+def redirect_user_based_on_role(user):
+    if user.user_type == 'operador':
+        if user.workzone and user.workzone.nombre.lower() == 'hospital':
+            return redirect('InicioOperadorHospital')
+        elif user.workzone and user.workzone.nombre.lower() == 'clinica':
+            return redirect('InicioOperadorClinica')
+    elif user.user_type == 'admin_zone':
+        if user.workzone and user.workzone.nombre.lower() == 'hospital':
+            return redirect('InicioAdminHospital')
+        elif user.workzone and user.workzone.nombre.lower() == 'clinica':
+            return redirect('InicioAdminClinica')
+    elif user.user_type == 'admin_global':
+        return redirect('InicioAdminGl')
+    return redirect('Ingreso')
+
+# ============================ Autenticación ============================
+
+def home(request):
+    if request.user.is_authenticated:
+        return redirect_user_based_on_role(request.user)
+    return render(request, 'core/home.html')
+
+def Ingreso(request):
+    if request.method == 'POST':
+        form = CustomLoginForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            return redirect_user_based_on_role(user)
+        else:
+            messages.error(request, 'Usuario o contraseña incorrectos.')
+    else:
+        form = CustomLoginForm()
+    return render(request, 'core/Ingreso.html', {'form': form})
+
+@login_required
+def logout_view(request):
+    logout(request)
+    return redirect('Ingreso')
+
+# ============================ Vistas Operador ============================
+
+@login_required
+def InicioOperadorHospital(request):
+    if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('Ingreso')
+    return render(request, 'core/Operador/InicioOperadorHospital.html')
+
+@login_required
+def InicioOperadorClinica(request):
+    if request.user.user_type != 'operador' or request.user.workzone.nombre.lower() != 'clinica':
+        return redirect('Ingreso')
+    return render(request, 'core/Operador/InicioOperadorClinica.html')
+
+@login_required
+def cambiar_contrasena(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)
+            messages.success(request, 'Contraseña actualizada correctamente!')
+            return redirect_user_based_on_role(request.user)
+        else:
+            messages.error(request, 'Por favor corrija los errores.')
+    else:
+        form = PasswordChangeForm(request.user)
+    return render(request, 'core/Operador/cambiar_contrasena.html', {'form': form})
+
+# ============================ Vistas Admin por Zona ============================
+
+@login_required
+def InicioAdminHospital(request):
+    if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('Ingreso')
+    return render(request, 'core/Admin/InicioAdminHospital.html')
+
+@login_required
+def InicioAdminClinica(request):
+    if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'clinica':
+        return redirect('Ingreso')
+    return render(request, 'core/Admin/InicioAdminClinica.html')
+
+@login_required
+def HospitalGestionUsuarios(request):
+    if not is_admin_zone(request.user) or request.user.workzone.nombre.lower() != 'hospital':
+        return redirect('Ingreso')
+
+    if request.method == 'POST':
+        if 'delete_user' in request.POST:
+            user_id = request.POST.get('delete_user')
+            user = get_object_or_404(Usuario, id=user_id, user_type='operador', workzone=request.user.workzone)
+            user.delete()
+            messages.success(request, f"Operador '{user.username}' eliminado correctamente.")
+            return redirect('HospitalGestionUsuarios')
+
+        username = request.POST.get('username')
+        first_name = request.POST.get('first_name')
+        last_name = request.POST.get('last_name')
+        date_of_entry = request.POST.get('date_of_entry')
+        password = '12345678'
+
+        if not username:
+            messages.error(request, "El nombre de usuario es requerido.")
+        elif Usuario.objects.filter(username=username).exists():
+            messages.error(request, "El nombre de usuario ya existe.")
+        else:
+            user = Usuario.objects.create_user(
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                password=password,
+                user_type='operador',
+                workzone=request.user.workzone
+            )
+            user.date_of_entry = parse_date(date_of_entry) if date_of_entry else None
+            user.save()
+            messages.success(request, f"Operador '{username}' creado exitosamente con contraseña por defecto.")
+            return redirect('HospitalGestionUsuarios')
+
+    operadores = Usuario.objects.filter(user_type='operador', workzone=request.user.workzone)
+    return render(request, 'core/Admin/HospitalGestionUsuarios.html', {'operadores': operadores})
+
+# ============================ Vistas Admin Global ============================
+
+@login_required
+@user_passes_test(is_admingl)
+def InicioAdminGl(request):
+    return render(request, 'core/AdminGL/InicioAdminGl.html')
+
+@login_required
+@user_passes_test(is_admingl)
+def crear_workzone(request):
+    if request.method == 'POST':
+        form = WorkZoneForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Zona de trabajo creada exitosamente.")
+            return redirect('listar_workzones')
+    else:
+        form = WorkZoneForm()
+    return render(request, 'core/AdminGL/crear_workzone.html', {'form': form})
+
+@login_required
+@user_passes_test(is_admingl)
+def crear_admin_zone(request):
+    if request.method == 'POST':
+        form = AdminZoneCreationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Administrador de zona creado exitosamente.")
+            return redirect('crear_admin_zone')
+    else:
+        form = AdminZoneCreationForm()
+    return render(request, 'core/AdminGL/crear_admin_zone.html', {'form': form})
+
+@login_required
+@user_passes_test(is_admingl)
+def listar_workzones(request):
+    zonas = WorkZone.objects.all()
+    return render(request, 'core/AdminGL/listar_workzones.html', {'zonas': zonas})
+
+# ============================ Inventario ============================
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def inventario(request):
+    modelos = BoxModel.objects.all().order_by('nombre')
+
+    tabla_por_modelo = []
+    for m in modelos:
+        cajas = m.cajas.filter(en_bodega=True)
+        numeros = [c.numero_unico for c in cajas]
+        tabla_por_modelo.append({
+            'modelo': m.nombre,
+            'numeros': numeros,  # lista para iterar
+            'total': cajas.count()
+        })
+
+    add_box_form = AddBoxForm()
+    modelo_id = None
+
+    if request.method == 'POST':
+        if 'add_box' in request.POST:
+            add_box_form = AddBoxForm(request.POST)
+            if add_box_form.is_valid():
+                new_box = add_box_form.save(commit=False)
+                if Box.objects.filter(modelo=new_box.modelo, numero_unico=new_box.numero_unico, en_bodega=True).exists():
+                    messages.error(request, "Ya existe una caja en bodega con ese modelo y número.")
+                else:
+                    new_box.en_bodega = True
+                    new_box.save()
+                    messages.success(request, "Caja agregada exitosamente.")
+                return redirect('inventario')
+
+        elif 'filtrar_modelo' in request.POST:
+            modelo_id = request.POST.get('modelo')
+            delivery_form = BoxDeliveryForm(request.POST, modelo_id=modelo_id)
+
+        elif 'register_delivery' in request.POST:
+            modelo_id = request.POST.get('modelo')
+            delivery_form = BoxDeliveryForm(request.POST, modelo_id=modelo_id)
+            if delivery_form.is_valid():
+                modelo = delivery_form.cleaned_data['modelo']
+                numero = delivery_form.cleaned_data['numero_unico']
+                area = delivery_form.cleaned_data['area_destino']
+                hora = delivery_form.cleaned_data['hora_entrega']
+
+                fecha = now().date()
+                fecha_hora = make_aware(datetime.combine(fecha, hora))
+
+                try:
+                    caja = Box.objects.get(modelo=modelo, numero_unico=numero, en_bodega=True)
+                except Box.DoesNotExist:
+                    messages.error(request, "La caja seleccionada no está disponible.")
+                else:
+                    BoxDeliveryRecord.objects.create(
+                        caja=caja,
+                        area_destino=area,
+                        usuario=request.user,
+                        sin_cambios=False,
+                        fecha_hora=fecha_hora
+                    )
+                    caja.en_bodega = False
+                    caja.save()
+                    messages.success(request, "Entrega registrada.")
+                return redirect('inventario')
+
+        elif 'sin_cambios' in request.POST:
+            today = now().date()
+            already_exists = BoxDeliveryRecord.objects.filter(
+                usuario=request.user,
+                sin_cambios=True,
+                fecha_hora__date=today
+            ).exists()
+            if already_exists:
+                messages.info(request, "Ya registraste 'Sin cambios' hoy.")
+            else:
+                BoxDeliveryRecord.objects.create(
+                    usuario=request.user,
+                    sin_cambios=True,
+                    fecha_hora=now()
+                )
+                messages.success(request, "Fin de turno registrado sin entregas.")
+            return redirect('inventario')
+
+    else:
+        delivery_form = BoxDeliveryForm()
+
+    historial = BoxDeliveryRecord.objects.filter(
+        usuario=request.user,
+        fecha_hora__date=now().date()
+    ).order_by('-fecha_hora')
+
+    return render(request, 'core/inventario.html', {
+        'tabla_por_modelo': tabla_por_modelo,
+        'add_box_form': add_box_form,
+        'delivery_form': delivery_form,
+        'historial': historial,
+    })
+
+########### FIN DE TURNO ###################
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def fin_de_turno(request):
+    if request.method == 'POST':
+        usuario = request.user
+        hoy = timezone.now().date()
+
+        # Obtener entregas del día (sin considerar registros de "sin cambios").
+        from .models import BoxDeliveryRecord, BoxModel, Box, FinDeTurnoRecord
+        entregas_qs = BoxDeliveryRecord.objects.filter(
+            usuario=usuario,
+            fecha_hora__date=hoy,
+            sin_cambios=False
+        ).order_by('fecha_hora')
+
+        # Formatear las entregas en una lista de diccionarios.
+        lista_entregas = []
+        for entrega in entregas_qs:
+            if entrega.caja:  # solo si se entregó una caja válida
+                lista_entregas.append({
+                    'modelo': entrega.caja.modelo.nombre,
+                    'numero': entrega.caja.numero_unico,
+                    'area': entrega.area_destino,
+                    'hora': entrega.fecha_hora.strftime('%H:%M')
+                })
+
+        # Obtener estado del inventario al cierre: todas las cajas en bodega.
+        inventario_data = []
+        for modelo in BoxModel.objects.all().order_by('nombre'):
+            cajas = Box.objects.filter(modelo=modelo, en_bodega=True)
+            if cajas.exists():
+                numeros = [caja.numero_unico for caja in cajas]
+                inventario_data.append({
+                    'modelo': modelo.nombre,
+                    'numeros': numeros,
+                    'total': cajas.count()
+                })
+
+        # Crear y guardar el registro de FinDeTurno (guardamos JSON en texto).
+            record = FinDeTurnoRecord.objects.create(
+            usuario=usuario,
+            entregas=json.dumps(lista_entregas, ensure_ascii=False),
+            inventario=json.dumps(inventario_data, ensure_ascii=False)
+        )
+
+        # Redirigir a la vista de resumen del reporte recién creado.
+        return redirect('fin_de_turno_resumen', pk=record.pk)
+    
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def listar_reportes(request):
+    from .models import FinDeTurnoRecord
+    reportes = FinDeTurnoRecord.objects.all()
+    return render(request, 'core/listar_reportes.html', {'reportes': reportes})
+
+
+
+@login_required
+@user_passes_test(is_admin_or_operator)
+def fin_de_turno_resumen(request, pk):
+    # Obtener registro o 404 si no existe.
+    record = get_object_or_404(FinDeTurnoRecord, pk=pk)
+
+    # Convertir JSON guardado en estructuras de Python.
+    try:
+        entregas = json.loads(record.entregas)
+    except json.JSONDecodeError:
+        entregas = []
+    try:
+        inventario = json.loads(record.inventario)
+    except json.JSONDecodeError:
+        inventario = []
+
+    return render(request, 'core/fin_de_turno_resumen.html', {
+        'record': record,
+        'entregas': entregas,
+        'inventario': inventario
+    })
+
+
+
+
+#core/models.py 
+
+
+# core/models.py
+from django.db import models
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+import json
+
+class WorkZone(models.Model):
+    nombre = models.CharField(max_length=100)
+    numero = models.CharField(max_length=50)
+    correo = models.EmailField()
+    direccion = models.TextField()
+
+    def __str__(self):
+        return self.nombre
+
+class Evento(models.Model):
+    workzone = models.ForeignKey(WorkZone, on_delete=models.CASCADE, related_name='eventos')
+    tipo = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=100)
+    problema = models.TextField()
+    solucion = models.TextField()
+    fecha = models.DateTimeField(auto_now_add=True) 
+
+    def __str__(self):
+        return f"{self.tipo} - {self.nombre}"
+    
+
+class CustomUser(AbstractUser):
+    USER_TYPE_CHOICES = (
+        ('admin_global', 'Administrador Global'),
+        ('admin_zone', 'Administrador Zona'),
+        ('operator', 'Operador'),
+    )
+    user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='operator')
+    workzone = models.ForeignKey('WorkZone', null=True, blank=True, on_delete=models.SET_NULL)
+    date_of_entry = models.DateField(null=True, blank=True)
+
+#########################################################################################3
+
+
+class BoxModel(models.Model):
+    nombre       = models.CharField(max_length=50, unique=True)
+    descripcion  = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.nombre
+
+class Box(models.Model):
+    numero_unico = models.CharField(max_length=20)  # Ya no es unique=True
+    modelo       = models.ForeignKey(BoxModel, on_delete=models.CASCADE, related_name='cajas')
+    en_bodega    = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.modelo.nombre} — {self.numero_unico}"
+
+    class Meta:
+       
+        verbose_name = "Caja"
+        verbose_name_plural = "Cajas"
+
+class MovementLog(models.Model):
+    TIPO_CHOICES = [
+        ('salida', 'Salida'),
+        ('retorno', 'Retorno'),
+    ]
+    caja         = models.ForeignKey(Box, on_delete=models.CASCADE, related_name='movimientos')
+    usuario      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    fecha_hora   = models.DateTimeField(auto_now_add=True)
+    tipo         = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    area_destino = models.CharField(max_length=100)
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} | {self.caja.numero_unico} @ {self.fecha_hora:%Y-%m-%d %H:%M}"
+    
+
+###############################################################
+
+class BoxDeliveryRecord(models.Model):
+    caja         = models.ForeignKey(Box, on_delete=models.CASCADE, null=True, blank=True)
+    area_destino = models.CharField(max_length=100, blank=True)
+    usuario      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    fecha_hora   = models.DateTimeField()  # ❌ Quitamos auto_now_add
+    sin_cambios  = models.BooleanField(default=False)
+
+    def __str__(self):
+        if self.sin_cambios:
+            return f"[Sin cambios] {self.usuario} - {self.fecha_hora.strftime('%d/%m %I:%M %p')}"
+        return f"{self.caja} → {self.area_destino} ({self.fecha_hora.strftime('%I:%M %p')})"
+
+
+############################ FIN DE TURNO ######################################
+
+
+class FinDeTurnoRecord(models.Model):
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        verbose_name="Usuario"
+    )
+    fecha_hora = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Hora del Cierre"
+    )
+    entregas = models.TextField(
+        blank=True,
+        verbose_name="Entregas del Día (JSON)"
+    )
+    inventario = models.TextField(
+        blank=True,
+        verbose_name="Estado Inventario al Cierre (JSON)"
+    )
+
+    class Meta:
+        verbose_name = "Fin de Turno"
+        verbose_name_plural = "Fines de Turno"
+        ordering = ['-fecha_hora']
+
+    def __str__(self):
+        return f"Fin de Turno - {self.usuario.username} ({self.fecha_hora:%d/%m/%Y %H:%M})"
+
+#core/forms.py 
+
+
+# core/forms.py
+
+from django import forms
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth import get_user_model
+
+from .models import *
+
+
+
+Usuario = get_user_model()
+
+class CustomLoginForm(AuthenticationForm):
+    username = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre de usuario'})
+    )
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Contraseña'})
+    )
+
+class OperadorCreationForm(UserCreationForm):
+    class Meta:
+        model = Usuario
+        fields = ['username', 'first_name', 'last_name', 'email', 'password1', 'password2']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.user_type = 'operador'
+        user.workzone = 'hospital'
+        if commit:
+            user.save()
+        return user
+
+
+
+class WorkZoneForm(forms.ModelForm):
+    class Meta:
+        model = WorkZone
+        fields = ['nombre', 'numero', 'correo', 'direccion']
+
+class AdminZoneCreationForm(forms.ModelForm):
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'first_name', 'last_name', 'email', 'workzone']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.user_type = 'admin_zone'
+        user.set_password('12345678')  # Clave por defecto
+        if commit:
+            user.save()
+        return user
+    
+
+###################################################################
+
+class MovementLogForm(forms.ModelForm):
+    class Meta:
+        model = MovementLog
+        fields = ['caja', 'area_destino']
+        widgets = {
+            'area_destino': forms.TextInput(attrs={'placeholder': 'Ej. pabellón'})
+        }
+
+
+#############################################################3
+
+
+
+
+
+class AddBoxForm(forms.ModelForm):
+    class Meta:
+        model = Box
+        fields = ['modelo', 'numero_unico']
+
+class BoxDeliveryForm(forms.Form):
+    modelo = forms.ModelChoiceField(queryset=BoxModel.objects.all(), label='Modelo')
+    numero_unico = forms.ChoiceField(label='Número de caja', required=False)
+    area_destino = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={'placeholder': 'Ej. FARMACIA'})
+    )
+    hora_entrega = forms.TimeField(
+        label="Hora de entrega",
+        widget=forms.TimeInput(format='%H:%M', attrs={'type': 'time'}),
+        required=False
+    )
+
+    def __init__(self, *args, **kwargs):
+        modelo_id = kwargs.pop('modelo_id', None)
+        super().__init__(*args, **kwargs)
+
+        if modelo_id:
+            cajas = Box.objects.filter(modelo_id=modelo_id, en_bodega=True).order_by('numero_unico')
+            self.fields['numero_unico'].choices = [(c.numero_unico, c.numero_unico) for c in cajas]
+            self.fields['numero_unico'].required = True
+            self.fields['area_destino'].required = True
+            self.fields['hora_entrega'].required = True
+        else:
+            self.fields['numero_unico'].choices = []
+
+
+#core/urls.py
+
+
+# core/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Public views
+    path('', views.home, name='home'),
+    path('Ingreso/', views.Ingreso, name='Ingreso'),
+    path('logout/', views.logout_view, name='logout'),
+
+    # Operador views
+    path('InicioOperadorHospital/', views.InicioOperadorHospital, name='InicioOperadorHospital'),
+    path('InicioOperadorClinica/', views.InicioOperadorClinica, name='InicioOperadorClinica'),
+    path('cambiar_contrasena/', views.cambiar_contrasena, name='cambiar_contrasena'),
+
+    # Admin Zona views
+    path('InicioAdminHospital/', views.InicioAdminHospital, name='InicioAdminHospital'),
+    path('InicioAdminClinica/', views.InicioAdminClinica, name='InicioAdminClinica'),
+    path('HospitalGestionUsuarios/', views.HospitalGestionUsuarios, name='HospitalGestionUsuarios'),
+
+    # Admin Global views
+    path('InicioAdminGl/', views.InicioAdminGl, name='InicioAdminGl'),
+    path('admin_global/workzones/crear/', views.crear_workzone, name='crear_workzone'),
+    path('admin_global/workzones/listar/', views.listar_workzones, name='listar_workzones'),
+    path('admin_global/admins/crear/', views.crear_admin_zone, name='crear_admin_zone'),
+
+    # Inventario 
+    
+    path('inventario/', views.inventario,          name='inventario'),
+
+    
+    # ... rutas existentes ...
+    path('fin-de-turno/', views.fin_de_turno, name='fin_de_turno'),
+    path('reportes/', views.listar_reportes, name='listar_reportes'),
+    path('reportes/<int:pk>/', views.fin_de_turno_resumen, name='fin_de_turno_resumen'),
+   
+
+
+]
+
+
+# core/templates/core/listar_reportes.html 
+
+<!-- core/templates/core/listar_reportes.html -->
+
+{% extends 'core/base.html' %}
+{% block content %}
+<h2>Historial de Reportes Fin de Turno</h2>
+
+<table class="table table-striped table-bordered">
+    <thead>
+        <tr>
+            <th>Usuario</th>
+            <th>Fecha - Hora</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for rec in reportes %}
+        <tr>
+            <td>{{ rec.usuario.get_full_name }} ({{ rec.usuario.username }})</td>
+            <td>{{ rec.fecha_hora|date:"d/m/Y H:i" }}</td>
+            <td>
+                <a href="{% url 'fin_de_turno_resumen' rec.pk %}" class="btn btn-primary btn-sm">
+                    Ver detalle
+                </a>
+            </td>
+        </tr>
+    {% empty %}
+        <tr>
+            <td colspan="3" class="text-center text-muted">No hay reportes registrados.</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+
+
+
+
+# core/templates/core/fin_de_turno_resumen.html 
+
+
+<!-- core/templates/core/fin_de_turno_resumen.html -->
+
+{% extends 'core/base.html' %}
+{% block content %}
+<h2>Reporte de Fin de Turno</h2>
+<p><strong>Usuario:</strong> {{ record.usuario.get_full_name }} ({{ record.usuario.username }})</p>
+<p><strong>Hora del cierre:</strong> {{ record.fecha_hora|date:"d/m/Y H:i" }}</p>
+
+<hr>
+
+<h4>Entregas realizadas hoy</h4>
+{% if entregas %}
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Modelo</th>
+            <th>Número</th>
+            <th>Área Destino</th>
+            <th>Hora</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for entrega in entregas %}
+        <tr>
+            <td>{{ entrega.modelo }}</td>
+            <td>{{ entrega.numero }}</td>
+            <td>{{ entrega.area }}</td>
+            <td>{{ entrega.hora }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">No se registraron entregas hoy.</p>
+{% endif %}
+
+<hr>
+
+<h4>Estado del Inventario al cierre</h4>
+<table class="table table-striped table-bordered">
+    <thead>
+        <tr>
+            <th>Modelo</th>
+            <th>Total en Bodega</th>
+            <th>Números Únicos</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for inv in inventario %}
+        <tr>
+            <td>{{ inv.modelo }}</td>
+            <td>{{ inv.total }}</td>
+            <td><pre>{{ inv.numeros|join:"\n" }}</pre></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+
+
+
+# core/templates/core/inventario.html 
+
+
+
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Inventario de Cajas</h2>
+
+    <!-- Formulario para agregar nuevas cajas -->
+    <form method="post" class="card p-3 mb-4">
+        {% csrf_token %}
+        <h5><i class="bi bi-plus-square"></i> Agregar nueva caja</h5>
+        {{ add_box_form.as_p }}
+        <button type="submit" name="add_box" class="btn btn-primary">Agregar Caja</button>
+    </form>
+
+    <!-- Formulario para registrar entrega (sin JavaScript) -->
+    <form method="post" class="card p-3 mb-4">
+        {% csrf_token %}
+        <h5><i class="bi bi-box-arrow-up"></i> Registrar Entrega</h5>
+
+        <div class="mb-3">
+            {{ delivery_form.modelo.label_tag }}
+            {{ delivery_form.modelo }}
+        </div>
+
+        {% if delivery_form.fields.numero_unico.choices %}
+        <div class="mb-3">
+            {{ delivery_form.numero_unico.label_tag }}
+            {{ delivery_form.numero_unico }}
+        </div>
+
+        <div class="mb-3">
+            {{ delivery_form.area_destino.label_tag }}
+            {{ delivery_form.area_destino }}
+        </div>
+
+        <div class="mb-3">
+            {{ delivery_form.hora_entrega.label_tag }}
+            {{ delivery_form.hora_entrega }}
+        </div>
+
+        <button type="submit" name="register_delivery" class="btn btn-warning">Registrar Entrega</button>
+        {% else %}
+        <button type="submit" name="filtrar_modelo" class="btn btn-secondary">Filtrar modelo</button>
+        {% endif %}
+    </form>
+
+    <!-- Tablas separadas por modelo -->
+    <h4>Cajas disponibles</h4>
+    {% for grupo in tabla_por_modelo %}
+        <h5>Modelo: {{ grupo.modelo }} (Total: {{ grupo.total }})</h5>
+        <table class="table table-striped table-bordered mb-4">
+            <thead>
+                <tr>
+                    <th>Número único</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if grupo.numeros %}
+                    {% for numero in grupo.numeros %}
+                        <tr><td>{{ numero }}</td></tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td class="text-muted">No hay cajas disponibles</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    {% empty %}
+        <p>No hay modelos disponibles.</p>
+    {% endfor %}
+
+   <!-- Reemplazar el formulario "Sin cambios" por "Fin de Turno" -->
+<form method="post" action="{% url 'fin_de_turno' %}" class="mb-4">
+    {% csrf_token %}
+    <button type="submit" name="fin_de_turno" class="btn btn-outline-danger">
+        <i class="bi bi-stop-circle"></i> Fin de Turno
+    </button>
+</form>
+
+    <!-- Historial del día actual -->
+    <h4>Historial de entregas de hoy</h4>
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>MODELO</th>
+                <th>NÚMERO</th>
+                <th>ÁREA DESTINO</th>
+                <th>HORA</th>
+                <th>USUARIO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in historial %}
+            <tr>
+                <td>{% if not r.sin_cambios %}{{ r.caja.modelo.nombre }}{% else %}—{% endif %}</td>
+                <td>{% if not r.sin_cambios %}{{ r.caja.numero_unico }}{% else %}—{% endif %}</td>
+                <td>{% if not r.sin_cambios %}{{ r.area_destino }}{% else %}SIN CAMBIOS{% endif %}</td>
+                <td>  {{ r.fecha_hora|date:'h:i A' }} </td>
+                <td>{{ r.usuario.username }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">No hay registros hoy.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block script %}
+<script> new DataTable('#tablaInventario'); </script>
+{% endblock %}
